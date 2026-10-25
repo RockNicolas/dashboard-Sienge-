@@ -215,3 +215,4 @@ select option:checked { background-color: var(--brand-soft); color: var(--text);
 .btn-perigo { background: transparent; color: var(--neg); border-color: color-mix(in srgb, var(--neg) 40%, transparent); box-shadow: none; padding: 0.3rem 0.65rem; font-size: 0.8125rem; }
 .btn-perigo:hover { background: color-mix(in srgb, var(--neg) 10%, transparent); filter: none; }
 .vazio { padding: 1.5rem; text-align: center; color: var(--muted); }
+.aviso-filtro { margin: 0 0 1rem; padding: 0.5rem 0.75rem; border-left: 3px solid var(--warn); background: var(--surface); border-radius: 0.5rem; }

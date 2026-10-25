@@ -69,7 +69,7 @@ function Topo() {
 
 function Conteudo() {
   const nav = useNavigate();
-  const { dados, erro } = useDashboard();
+  const { dados, erro, filtros } = useDashboard();
   const [tema, setTema] = useState<Tema>(lerTema);
   const [, forcar] = useState(0);
 
@@ -109,6 +109,11 @@ function Conteudo() {
         <Topo />
         <main key={`${tema}-${escuro(tema)}`}>
           {erro && <div className="erro">Erro: {erro}</div>}
+          {filtros.obra && dados && (
+            <p className="muted aviso-filtro">
+              Filtro de obra ativo: vale para o consumo. Compras e fornecedores não são divididos por obra, então seguem com o total.
+            </p>
+          )}
           {dados ? <Outlet /> : !erro && <p className="muted">Carregando…</p>}
         </main>
       </div>

@@ -11,5 +11,5 @@ if (!UsuarioModel.total()) {
   console.log(`Usuário criado: ${env.painelUsuario}` + (env.painelSenha ? '' : `  senha: ${senha}  (anote — não será exibida de novo)`));
 }
 
-app.listen(env.port, () =>
-  console.log(`API em http://localhost:${env.port}  (${ConfigService.mock() ? 'DADOS DE DEMONSTRAÇÃO' : 'Sienge real'})`));
+app.listen(env.port, env.host, () =>
+  console.log(`API em http://${env.host === '127.0.0.1' ? 'localhost' : env.host}:${env.port}  (${ConfigService.mock() ? 'DADOS DE DEMONSTRAÇÃO' : 'Sienge real'})`));

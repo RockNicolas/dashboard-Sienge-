@@ -16,8 +16,9 @@ const e = process.env;
 
 export const env = {
   port: Number(e.PORT) || 3000,
-  producao: e.NODE_ENV === 'production',
-  mock: e.USE_MOCK === 'true' || !e.SIENGE_SUBDOMINIO,
+  // por padrão só a própria máquina acessa; use HOST=0.0.0.0 para abrir na rede (de preferência atrás de HTTPS)
+  host: e.HOST || '127.0.0.1',
+  confiarProxy: e.TRUST_PROXY === 'true',
   cacheMs: (Number(e.CACHE_MINUTOS) || 15) * 60 * 1000,
   sessaoMs: 12 * 60 * 60 * 1000,
   painelUsuario: e.PAINEL_USUARIO || 'admin',

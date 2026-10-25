@@ -126,15 +126,16 @@ function compradoVsConsumido(compras: Compra[], consumos: Consumo[]): CompradoVs
 // Extra: variação de preço unitário e economia potencial
 function variacaoPreco(compras: Compra[]): VariacaoPreco[] {
   return [...agrupar(compras, c => c.insumoId)].map(([, l]) => {
-    const ps = l.map(x => x.preco).filter(Boolean);
-    const min = Math.min(...ps), max = Math.max(...ps);
+    const ps = l.map(x => x.preco).filter(p => p > 0);
+    const min = ps.length ? Math.min(...ps) : 0;
+    const max = ps.length ? Math.max(...ps) : 0;
     const qtd = soma(l, x => x.qtd);
     return {
       insumo: l[0].insumo, un: l[0].un, min: r2(min), max: r2(max),
       medio: r2(qtd ? soma(l, x => x.valor) / qtd : 0),
       variacao: min ? r2(((max - min) / min) * 100) : 0,
       melhorFornecedor: l.find(x => x.preco === min)?.fornecedor,
-      economiaPotencial: r2(soma(l, x => (x.preco - min) * x.qtd)),
+      economiaPotencial: r2(soma(l, x => (x.preco > 0 ? (x.preco - min) * x.qtd : 0))),
     };
   }).sort((a, b) => b.economiaPotencial - a.economiaPotencial);
 }

@@ -11,6 +11,7 @@ import PrecosPage from './pages/PrecosPage';
 import HistoricoPage from './pages/HistoricoPage';
 import ConfigPage from './pages/ConfigPage';
 import ImportPage from './pages/ImportPage';
+import ErroPage from './pages/ErroPage';
 
 // Menu lateral/abas: uma rota por indicador
 export const MENU = [
@@ -27,10 +28,11 @@ export const MENU = [
 ];
 
 export const router = createBrowserRouter([
-  { path: '/login', element: <LoginPage /> },
+  { path: '/login', element: <LoginPage />, errorElement: <ErroPage /> },
   {
     path: '/',
     element: <Layout />,
+    errorElement: <ErroPage />,
     children: [
       { index: true, element: <GeralPage /> },
       { path: 'comprado-consumido', element: <UsoPage /> },

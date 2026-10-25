@@ -7,7 +7,7 @@ const COOKIE = 'HttpOnly; SameSite=Strict; Path=/';
 
 export const AuthController = {
   login(req: Request, res: Response): void {
-    const ip = req.socket.remoteAddress ?? '?';
+    const ip = req.ip ?? '?';
     if (AuthService.bloqueado(ip)) {
       res.status(429).json({ erro: 'Muitas tentativas. Aguarde alguns minutos.' });
       return;
@@ -20,7 +20,7 @@ export const AuthController = {
     }
     AuthService.limparFalhas(ip);
     const sid = AuthService.criarSessao(String(usuario));
-    res.setHeader('Set-Cookie', `sid=${sid}; ${COOKIE}; Max-Age=${env.sessaoMs / 1000}`);
+    res.setHeader('Set-Cookie', `sid=${sid}; ${COOKIE}${req.secure ? '; Secure' : ''}; Max-Age=${env.sessaoMs / 1000}`);
     res.json({ ok: true });
   },
 

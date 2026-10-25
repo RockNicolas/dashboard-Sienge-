@@ -40,6 +40,13 @@ Sem credenciais do Sienge (ou com demonstração marcada) usa dados de demonstra
 5. **Comprado × Consumido** — "comprei 100 cimentos, quantos foram p/ a obra X e Y?" (saldo e % usado)
 6. Extras: oportunidades de preço (variação e economia potencial), histórico de sincronizações, impressão em PDF
 
+## Segurança e testes
+
+- O servidor escuta só em `127.0.0.1` (use `HOST=0.0.0.0` para abrir na rede). Há cabeçalhos de segurança (CSP, nosniff, X-Frame-Options)
+  e o cookie de sessão ganha `Secure` em HTTPS. Atrás de proxy, defina `TRUST_PROXY=true`.
+- Troque a senha inicial do `.env` antes de expor o painel.
+- `npm test` roda os testes automatizados (análises, distribuição do consumo por mês); `npm run typecheck` confere os tipos.
+
 ## Login e histórico
 
 - Usuário/senha em SQLite (`data/painel.db`, scrypt). Criado no 1º start a partir de `PAINEL_USUARIO`/`PAINEL_SENHA`;

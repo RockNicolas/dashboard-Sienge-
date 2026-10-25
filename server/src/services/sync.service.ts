@@ -9,7 +9,7 @@ import { SiengeService } from './sienge.service';
 import type { Dados } from '../types';
 
 const sincronizado = new Map<string, number>(); // "de|ate" -> timestamp
-let emAndamento: Promise<void> | null = null;
+const emAndamento = new Map<string, Promise<void>>(); // uma sincronização por período, sem duplicar chamadas
 
 export const SyncService = {
   /** Força nova busca no Sienge na próxima consulta (ex.: depois de mudar as credenciais). */
@@ -23,22 +23,26 @@ export const SyncService = {
 
     const k = `${de}|${ate}`;
     if (forcar || Date.now() - (sincronizado.get(k) ?? 0) > env.cacheMs) {
-      emAndamento ??= SiengeService.carregar(de, ate)
-        .then(d => {
-          transacao(() => {
-            DadosModel.substituirPeriodo(d, de, ate);
-            SincronizacaoModel.registrar(d, de, ate);
-          });
-          sincronizado.set(k, Date.now());
-        })
-        .finally(() => { emAndamento = null; });
+      let p = emAndamento.get(k);
+      if (!p) {
+        p = SiengeService.carregar(de, ate)
+          .then(d => {
+            transacao(() => {
+              DadosModel.substituirPeriodo(d, de, ate);
+              SincronizacaoModel.registrar(d, de, ate);
+            });
+            sincronizado.set(k, Date.now());
+          })
+          .finally(() => { emAndamento.delete(k); });
+        emAndamento.set(k, p);
+      }
       try {
-        await emAndamento;
+        await p;
       } catch (e) {
         // Sienge fora do ar, cota esgotada ou credencial inválida: segue com o histórico já salvo
         console.warn('[sync] falhou, usando histórico local:', (e as Error).message);
-        sincronizado.set(k, Date.now()); // não insiste a cada clique
-        if (!SincronizacaoModel.ultima()) throw e;
+        if (!SincronizacaoModel.ultima()) throw e; // sem histórico para mostrar: o erro precisa aparecer
+        sincronizado.set(k, Date.now()); // com histórico: não insiste a cada clique
       }
     }
     return DadosModel.ler(de, ate);
