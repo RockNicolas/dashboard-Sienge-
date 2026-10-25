@@ -84,6 +84,7 @@ export interface DashboardData {
 
 export interface DashboardResponse extends DashboardData {
   mock: boolean;
+  aviso: string | null;    // sincronização com o Sienge falhou ou ficou parcial (cota, conexão...)
   usuario: string;
   atualizado: string;
   obrasDisponiveis: Obra[];
@@ -95,7 +96,147 @@ export interface Sincronizacao {
   compras: number; consumos: number; comprado: number; consumido: number;
 }
 
+// ---------- módulo financeiro (contas a pagar, a receber, caixa e bancos) ----------
+export type SituacaoParcela = 'aberta' | 'vencida' | 'quitada';
+
+/** Rateio de um lançamento (plano financeiro, centro de custo ou obra), em % do valor. */
+export interface Rateio { id: string; nome: string; pct: number }
+
+interface ParcelaBase {
+  empresaId: string; empresa: string;
+  tituloId: string; parcelaId: string;
+  documento: string;           // tipo + número, ex.: "NF 1234"
+  emissao: string;             // AAAA-MM-DD
+  vencimento: string;
+  competencia: string;
+  valor: number;               // valor original da parcela
+  saldo: number;               // em aberto
+  situacao: SituacaoParcela;
+  planos: Rateio[];            // plano financeiro (categoria)
+  centrosCusto: Rateio[];
+  obras: Rateio[];             // apropriação por obra (filtro e análise por obra)
+}
+
+export interface ContaPagar extends ParcelaBase {
+  credorId: string; credor: string;
+  pago: number;                // soma líquida dos pagamentos
+  ultimoPagamento: string | null;
+  autorizada: boolean;
+}
+
+export interface ContaReceber extends ParcelaBase {
+  clienteId: string; cliente: string;
+  recebido: number;            // soma líquida dos recebimentos
+  ultimoRecebimento: string | null;
+  inadimplencia: string;       // situação de inadimplência como vem do Sienge (valores não documentados)
+  unidade: string;             // unidade principal (imóvel)
+}
+
+export interface MovimentoBancario {
+  id: string;
+  data: string;
+  empresaId: string; empresa: string;
+  conta: string;               // número da conta corrente
+  valor: number;               // positivo = entrada, negativo = saída
+  operacao: string;            // nome da operação
+  historico: string;
+  conciliado: boolean;
+  tituloId: string | null;     // título vinculado (a pagar ou a receber)
+  parceiro: string;            // credor ou cliente
+  planos: Rateio[];
+  obras: Rateio[];
+}
+
+export interface ContaCorrente {
+  conta: string; nome: string;
+  banco: string; agencia: string; tipo: string;
+  empresaId: string; empresa: string;
+  ativa: boolean;
+}
+
+export interface SaldoConta {
+  conta: string; empresaId: string;
+  data: string;
+  saldo: number;
+  conciliado: number;          // saldo conciliado
+}
+
+export interface DadosFinanceiros {
+  pagar: ContaPagar[];
+  receber: ContaReceber[];
+  movimentos: MovimentoBancario[];
+  contas: ContaCorrente[];
+  saldos: SaldoConta[];
+  obras: Obra[];
+}
+
+export type Agrupamento = 'mes' | 'semana';
+
+export interface FiltrosFinanceiro extends Filtros { agrupar: Agrupamento }
+
+/** Um ponto da série mensal/semanal. `periodo` = AAAA-MM (mês) ou AAAA-MM-DD da segunda-feira (semana). */
+export interface PontoFinanceiro {
+  periodo: string;
+  aPagar: number; pago: number;          // parcelas a pagar com vencimento no período
+  aReceber: number; recebido: number;    // parcelas a receber com vencimento no período
+  entradas: number; saidas: number;      // movimentos de caixa e bancos no período
+  saldoAcumulado: number;                // entradas − saídas acumulado desde o início do filtro
+}
+
+export interface ResumoFinanceiro {
+  aPagar: number; pago: number; pagarAberto: number; pagarVencido: number; parcelasPagar: number;
+  aReceber: number; recebido: number; receberAberto: number; receberVencido: number; parcelasReceber: number;
+  entradas: number; saidas: number; resultadoCaixa: number;
+  saldoBancos: number | null;            // null com filtro de obra (saldo de conta não é por obra)
+}
+
+export interface FinanceiroObra {
+  obraId: string; obra: string;
+  aPagar: number; pagarAberto: number; pagarVencido: number;
+  aReceber: number; receberAberto: number; receberVencido: number;
+  entradas: number; saidas: number; resultado: number;   // entradas − saídas
+}
+
+export interface TotalParceiro { nome: string; total: number; aberto: number; vencido: number; parcelas: number }
+export interface TotalPlano { plano: string; entradas: number; saidas: number }
+
+export interface ParcelaResumo {
+  tipo: 'pagar' | 'receber';
+  parceiro: string; documento: string; obra: string;
+  vencimento: string; valor: number; saldo: number; situacao: SituacaoParcela;
+}
+
+export interface SaldoContaDetalhe extends SaldoConta { nome: string; banco: string; empresa: string }
+
+export interface FinanceiroData {
+  resumo: ResumoFinanceiro;
+  serie: PontoFinanceiro[];
+  porObra: FinanceiroObra[];
+  credores: TotalParceiro[];
+  clientes: TotalParceiro[];
+  planos: TotalPlano[];
+  vencidas: ParcelaResumo[];             // maiores parcelas vencidas (pagar e receber)
+  proximos: ParcelaResumo[];             // vencimentos dos próximos 30 dias
+  saldos: SaldoContaDetalhe[];
+  movimentos: MovimentoBancario[];       // últimos movimentos do período
+}
+
+export interface FinanceiroResponse extends FinanceiroData {
+  mock: boolean;
+  aviso: string | null;
+  atualizado: string | null;             // última sincronização financeira
+  agrupar: Agrupamento;
+  de: string; ate: string;
+}
+
 // ---------- configuração do Sienge e cota diária da API ----------
+export interface PlanoSienge {
+  id: string;
+  nome: string;
+  rest: number;            // requisições REST por dia
+  bulk: number;            // requisições bulk-data por dia
+}
+
 export interface ConfigPublica {
   usarMock: boolean;       // preferência salva
   mockEfetivo: boolean;    // true se estiver mostrando dados de demonstração agora
@@ -103,7 +244,8 @@ export interface ConfigPublica {
   usuario: string;
   senhaDefinida: boolean;  // a senha nunca volta para o navegador
   endpointConsumo: string;
-  limiteDiario: number;    // 0 = sem limite definido
+  plano: string;           // id do plano contratado ('' = não informado)
+  planos: PlanoSienge[];   // opções disponíveis
 }
 
 export interface ConfigEntrada {
@@ -112,17 +254,30 @@ export interface ConfigEntrada {
   usuario?: string;
   senha?: string;          // vazio/ausente = mantém a senha salva
   endpointConsumo?: string;
-  limiteDiario?: number;
+  plano?: string;
+}
+
+/** Plano escolhido no painel × limite que o Sienge informa nos cabeçalhos. */
+export interface VerificacaoPlano {
+  escolhido: PlanoSienge | null;
+  limiteApi: number | null;           // x-ratelimit-limit-day da última resposta (null = ainda não visto)
+  planoApi: PlanoSienge | null;       // plano que corresponde a esse limite
+  confere: boolean | null;            // null = não dá para conferir ainda
+  mensagem: string;
 }
 
 export interface QuotaInfo {
+  conectado: boolean;        // há usuário de API configurado (sem ele, não há cota a mostrar)
   dia: string;
   usadas: number;
   erros: number;
   limite: number;            // 0 = sem limite definido
   restante: number | null;   // null quando não há limite
   pct: number;               // 0–100 (0 sem limite)
+  bulkUsadas: number;        // requisições bulk-data hoje (cota separada)
+  bulkLimite: number;        // 0 = sem plano definido
   headers: Record<string, string> | null; // cabeçalhos de rate limit devolvidos pela API, se houver
+  plano: VerificacaoPlano;
   serie: { dia: string; requisicoes: number; erros: number }[];
 }
 

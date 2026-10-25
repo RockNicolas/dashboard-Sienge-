@@ -49,7 +49,9 @@ b { font-weight: 650; }
 .brand i { width: 2rem; height: 2rem; border-radius: 0.5625rem; background: linear-gradient(135deg, #2a78d6, #6250d6); display: grid; place-items: center; font-style: normal; font-weight: 700; }
 .brand span { font-weight: 650; line-height: 1.15; font-size: 0.875rem; }
 .brand small { display: block; font-weight: 400; color: var(--side-text); font-size: 0.7188rem; }
-.side nav { display: flex; flex-direction: column; gap: 2px; }
+.side nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-height: 0; scrollbar-width: thin; }
+.nav-secao { display: block; padding: 0.875rem 0.75rem 0.25rem; font-size: 0.6875rem; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--side-text); opacity: .6; }
+.nav-secao:first-child { padding-top: 0; }
 .side nav a { display: flex; align-items: center; gap: 0.6875rem; padding: 0.5625rem 0.75rem; border-radius: 0.5625rem; color: var(--side-text); text-decoration: none; font-weight: 500; }
 .side nav a svg { width: 1.0625rem; height: 1.0625rem; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .side nav a:hover { background: rgba(255, 255, 255, .06); color: #fff; }
@@ -98,6 +100,8 @@ button { font: inherit; cursor: pointer; border: 1px solid transparent; border-r
 button:hover { filter: brightness(1.06); }
 button.sec { background: var(--surface); color: var(--text); border-color: var(--line); box-shadow: var(--shadow); }
 button.sec:hover { border-color: var(--brand); filter: none; }
+button.sec.perigo { color: var(--neg); }
+button.sec.perigo:hover { border-color: var(--neg); }
 
 /* ---------- cards ---------- */
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1.125rem; box-shadow: var(--shadow); }
@@ -130,8 +134,13 @@ tbody tr:last-child td { border-bottom: 0; }
 .bar { height: 0.4375rem; background: var(--line); border-radius: 0.25rem; min-width: 5.625rem; overflow: hidden; }
 .bar i { display: block; height: 100%; border-radius: 0.25rem; background: var(--brand); }
 .tag { display: inline-block; min-width: 1.625rem; text-align: center; padding: 2px 0.5625rem; border-radius: 62.4375rem; font-size: 0.75rem; font-weight: 650; color: #fff; }
+.tag.vencida { background: #c4332f; } .tag.aberta { background: #b9770e; } .tag.quitada { background: #0b7a53; }
+.barra-fin { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin-bottom: 1rem; }
+.seg { display: inline-flex; gap: 0.375rem; }
+.seg button { padding: 0.4rem 0.875rem; }
 .tag.A { background: #c4332f; } .tag.B { background: #b9770e; } .tag.C { background: #0b7a53; }
 .pos { color: var(--pos); } .neg { color: var(--neg); }
+.aviso-sync { background: color-mix(in srgb, var(--warn) 12%, var(--surface)); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); border-radius: 0.625rem; padding: 0.75rem 0.875rem; margin-bottom: 0.875rem; }
 .erro { background: color-mix(in srgb, var(--neg) 12%, var(--surface)); color: var(--neg); border: 1px solid color-mix(in srgb, var(--neg) 35%, transparent); border-radius: 0.625rem; padding: 0.75rem 0.875rem; margin-bottom: 0.875rem; }
 
 /* ---------- login ---------- */
@@ -147,6 +156,8 @@ tbody tr:last-child td { border-bottom: 0; }
   .side { padding: 1rem 0.5rem; }
   .side nav a { justify-content: center; padding: 0.7rem 0; font-size: 0; gap: 0; }
   .side nav a svg { width: 1.25rem; height: 1.25rem; }
+  .nav-secao { font-size: 0; padding: 0.5rem 0 0; border-top: 1px solid rgba(255, 255, 255, .08); margin-top: 0.375rem; }
+  .nav-secao:first-child { border: 0; margin: 0; }
   .side .brand { justify-content: center; padding: 0 0 1rem; }
   .side .brand span, .side-foot .user span:not(.avatar), .side-foot .txt { display: none; }
   .side-foot button { text-align: center; padding: 0.55rem 0; }
@@ -158,6 +169,7 @@ tbody tr:last-child td { border-bottom: 0; }
   .side .brand { padding: 0; }
   .side nav { flex-direction: row; overflow-x: auto; flex: 1; gap: 0.25rem; scrollbar-width: none; }
   .side nav a { padding: 0.55rem 0.7rem; flex: none; }
+  .nav-secao { display: none; }
   .side-foot { margin: 0; padding: 0; border: 0; flex-direction: row; }
   .side-foot .user { display: none; }
   .side-foot button { padding: 0.4rem 0.7rem; }

@@ -10,6 +10,7 @@ interface Estado {
   filtros: FiltrosUI;
   aplicar: (f: FiltrosUI) => void;
   atualizar: () => void;
+  versao: number;          // muda a cada "↻ Sienge" (outras telas, como o financeiro, também forçam a busca)
 }
 
 const Ctx = createContext<Estado | null>(null);
@@ -21,6 +22,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [dados, setDados] = useState<DashboardResponse | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
+  const [versao, setVersao] = useState(0);
 
   const carregar = useCallback(async (f: FiltrosUI, forcar = false) => {
     setCarregando(true);
@@ -38,7 +40,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   useEffect(() => { void carregar(filtros); }, [filtros, carregar]);
 
   return (
-    <Ctx.Provider value={{ dados, carregando, erro, filtros, aplicar: setFiltros, atualizar: () => void carregar(filtros, true) }}>
+    <Ctx.Provider value={{
+      dados, carregando, erro, filtros, versao, aplicar: setFiltros,
+      atualizar: () => { setVersao(v => v + 1); void carregar(filtros, true); },
+    }}>
       {children}
     </Ctx.Provider>
   );

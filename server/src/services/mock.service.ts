@@ -1,5 +1,8 @@
-// Dados de demonstração (USE_MOCK=true), no mesmo formato que o Sienge devolve.
-import type { Compra, Consumo, Dados, Obra } from '../types';
+// Dados de demonstração (modo demonstração em Configurações), no mesmo formato que o Sienge devolve.
+import { janelaFinanceira } from './financeiro.service';
+import type {
+  Compra, Consumo, ContaCorrente, ContaPagar, ContaReceber, Dados, DadosFinanceiros, MovimentoBancario, Obra, Rateio, SaldoConta,
+} from '../types';
 
 function rng(seed: number) {
   let s = seed;
@@ -40,8 +43,110 @@ const FORNECEDORES = [
 ];
 
 let cache: Dados | null = null;
+let cacheFin: DadosFinanceiros | null = null;
+
+const EMPREITEIROS = ['Empreiteira Silva & Filhos', 'Instaladora Elétrica Luz', 'Hidráulica Fonseca', 'Locadora de Equipamentos Forte', 'Escritório Contábil Prisma'];
+const CLIENTES = ['Ana Paula Ribeiro', 'Carlos Henrique Souza', 'Fernanda Lima', 'João Pedro Martins', 'Juliana Costa', 'Marcos Vinícius Rocha',
+  'Patrícia Almeida', 'Rafael Gomes', 'Renata Carvalho', 'Thiago Barbosa', 'Vanessa Nunes', 'Gustavo Pereira'];
+const PLANOS_DESPESA: Rateio[] = [
+  { id: '2.01', nome: 'Materiais de construção', pct: 100 }, { id: '2.02', nome: 'Mão de obra empreitada', pct: 100 },
+  { id: '2.03', nome: 'Locação de equipamentos', pct: 100 }, { id: '2.04', nome: 'Serviços de instalação', pct: 100 },
+  { id: '2.05', nome: 'Despesas administrativas', pct: 100 },
+];
+const PLANO_RECEITA: Rateio = { id: '1.01', nome: 'Venda de unidades', pct: 100 };
+const CONTAS: ContaCorrente[] = [
+  { conta: '12345-6', nome: 'Itaú — Pagamentos de obra', banco: 'Itaú Unibanco', agencia: '0123', tipo: 'Bancária', empresaId: '1', empresa: 'Construtora Demo', ativa: true },
+  { conta: '98765-4', nome: 'Bradesco — Recebimentos', banco: 'Bradesco', agencia: '4567', tipo: 'Bancária', empresaId: '1', empresa: 'Construtora Demo', ativa: true },
+  { conta: 'CAIXA', nome: 'Caixa da obra', banco: '', agencia: '', tipo: 'Caixa', empresaId: '1', empresa: 'Construtora Demo', ativa: true },
+];
+
+const isoDia = (d: Date) => d.toISOString().slice(0, 10);
+const somarDias = (s: string, n: number) => isoDia(new Date(Date.parse(s + 'T00:00:00Z') + n * 864e5));
+
+function gerarFinanceiro(): DadosFinanceiros {
+  const r = rng(7);
+  const hoje = isoDia(new Date());
+  const { vencDe } = janelaFinanceira();
+  const base = new Date(vencDe + 'T00:00:00Z');
+  const pagar: ContaPagar[] = [];
+  const receber: ContaReceber[] = [];
+  const movimentos: MovimentoBancario[] = [];
+  const credores = [...FORNECEDORES.map(f => f.nome), ...EMPREITEIROS];
+  let titulo = 5000;
+  let mov = 1;
+  const pick = <T>(l: T[]) => l[Math.floor(r() * l.length)];
+  const rateioObra = (): Rateio[] => {
+    const o = pick(OBRAS);
+    if (r() > 0.15) return [{ id: o.id, nome: o.nome, pct: 100 }];
+    const o2 = OBRAS.find(x => x.id !== o.id)!;
+    return [{ id: o.id, nome: o.nome, pct: 60 }, { id: o2.id, nome: o2.nome, pct: 40 }];
+  };
+  const movimento = (data: string, valor: number, parceiro: string, tituloId: string, planos: Rateio[], obras: Rateio[], conta: string) =>
+    movimentos.push({
+      id: String(mov++), data, empresaId: '1', empresa: 'Construtora Demo', conta, valor: +valor.toFixed(2),
+      operacao: valor < 0 ? 'Pagamento' : 'Recebimento', historico: valor < 0 ? 'Pagamento de título' : 'Recebimento de parcela',
+      conciliado: r() > 0.1, tituloId, parceiro, planos, obras,
+    });
+
+  for (let m = 0; m < 19; m++) {
+    const ano = base.getUTCFullYear();
+    const mes = base.getUTCMonth() + m;
+    // contas a pagar: ~6 títulos por obra no mês
+    for (let i = 0; i < OBRAS.length * 6; i++) {
+      const venc = isoDia(new Date(Date.UTC(ano, mes, 1 + Math.floor(r() * 28))));
+      const valor = +(4000 + r() ** 2 * 70000).toFixed(2);
+      const passado = venc < hoje;
+      const saldo = passado ? (r() < 0.1 ? valor : 0) : valor;
+      const obras = rateioObra();
+      const plano = pick(PLANOS_DESPESA);
+      const credor = pick(credores);
+      const id = String(++titulo);
+      const pagou = saldo === 0 ? somarDias(venc, Math.floor(r() * 4) - 1) : null;
+      pagar.push({
+        empresaId: '1', empresa: 'Construtora Demo', tituloId: id, parcelaId: '1', documento: `NF ${1000 + titulo}`,
+        emissao: somarDias(venc, -30), vencimento: venc, competencia: somarDias(venc, -30),
+        valor, saldo, situacao: saldo === 0 ? 'quitada' : passado ? 'vencida' : 'aberta',
+        planos: [plano], centrosCusto: obras, obras,
+        credorId: credor, credor, pago: +(valor - saldo).toFixed(2), ultimoPagamento: pagou, autorizada: true,
+      });
+      if (pagou && pagou <= hoje) movimento(pagou, -valor, credor, id, [plano], obras, r() > 0.15 ? '12345-6' : 'CAIXA');
+    }
+    // contas a receber: parcelas de venda de unidades
+    for (let i = 0; i < OBRAS.length * 4; i++) {
+      const venc = isoDia(new Date(Date.UTC(ano, mes, 5 + Math.floor(r() * 20))));
+      const valor = +(9000 + r() * 45000).toFixed(2);
+      const passado = venc < hoje;
+      const inadimplente = passado && r() < 0.08;
+      const saldo = passado && !inadimplente ? 0 : valor;
+      const o = pick(OBRAS);
+      const obras = [{ id: o.id, nome: o.nome, pct: 100 }];
+      const cliente = pick(CLIENTES);
+      const id = String(++titulo);
+      const recebeu = saldo === 0 ? somarDias(venc, Math.floor(r() * 5)) : null;
+      receber.push({
+        empresaId: '1', empresa: 'Construtora Demo', tituloId: id, parcelaId: String(1 + (m % 12)), documento: `CT ${id}`,
+        emissao: somarDias(venc, -60), vencimento: venc, competencia: venc,
+        valor, saldo, situacao: saldo === 0 ? 'quitada' : passado ? 'vencida' : 'aberta',
+        planos: [PLANO_RECEITA], centrosCusto: obras, obras,
+        clienteId: cliente, cliente, recebido: +(valor - saldo).toFixed(2), ultimoRecebimento: recebeu,
+        inadimplencia: inadimplente ? 'S' : 'N', unidade: `${o.nome.split(' ')[0]} — Apto ${100 + Math.floor(r() * 12) * 10 + Math.floor(r() * 4) + 1}`,
+      });
+      if (recebeu && recebeu <= hoje) movimento(recebeu, valor, cliente, id, [PLANO_RECEITA], obras, '98765-4');
+    }
+  }
+  const saldos: SaldoConta[] = [
+    { conta: '12345-6', empresaId: '1', data: hoje, saldo: 412_380.55, conciliado: 398_120.1 },
+    { conta: '98765-4', empresaId: '1', data: hoje, saldo: 1_235_904.2, conciliado: 1_235_904.2 },
+    { conta: 'CAIXA', empresaId: '1', data: hoje, saldo: 18_450, conciliado: 18_450 },
+  ];
+  return { pagar, receber, movimentos, contas: CONTAS, saldos, obras: OBRAS };
+}
 
 export const MockService = {
+  financeiro(): DadosFinanceiros {
+    return (cacheFin ??= gerarFinanceiro());
+  },
+
   carregar(): Dados {
     if (cache) return cache;
     const r = rng(42);

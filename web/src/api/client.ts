@@ -1,5 +1,5 @@
 import type {
-  ConfigEntrada, ConfigPublica, DashboardResponse, ImportConfirmacao, ImportListagem, ImportPreview, ImportResultado,
+  Agrupamento, ConfigEntrada, ConfigPublica, DashboardResponse, FinanceiroResponse, ImportConfirmacao, ImportListagem, ImportPreview, ImportResultado,
   QuotaInfo, Sincronizacao, TesteConexao,
 } from '@server/types';
 
@@ -34,9 +34,18 @@ export const api = {
     return req<DashboardResponse>('/api/dashboard?' + q);
   },
   historico: () => req<Sincronizacao[]>('/api/historico'),
+  financeiro: (f: FiltrosUI, agrupar: Agrupamento, forcar = false) => {
+    const q = new URLSearchParams({ agrupar });
+    if (f.from) q.set('from', f.from);
+    if (f.to) q.set('to', f.to);
+    if (f.obra) q.set('obra', f.obra);
+    if (forcar) q.set('forcar', '1');
+    return req<FinanceiroResponse>('/api/financeiro?' + q);
+  },
   config: () => req<ConfigPublica>('/api/config'),
   salvarConfig: (c: ConfigEntrada) => req<ConfigPublica>('/api/config', json('PUT', c)),
   testarConfig: (c: ConfigEntrada) => req<TesteConexao>('/api/config/testar', json('POST', c)),
+  desconectarSienge: () => req<ConfigPublica>('/api/config/conexao', { method: 'DELETE' }),
   quota: () => req<QuotaInfo>('/api/quota'),
   importacoes: () => req<ImportListagem>('/api/importar'),
   importarPreview: (arq: File) =>

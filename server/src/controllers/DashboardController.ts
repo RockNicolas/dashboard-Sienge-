@@ -14,10 +14,11 @@ export const DashboardController = {
     const hoje = new Date();
     const to = param(req.query.to) ?? iso(hoje);
     const from = param(req.query.from) ?? iso(new Date(hoje.getFullYear(), hoje.getMonth() - 11, 1));
-    const dados = await SyncService.obterDados(from, to, req.query.forcar === '1');
+    const { dados, aviso } = await SyncService.obterDados(from, to, req.query.forcar === '1');
 
     const body: DashboardResponse = {
       mock: ConfigService.mock(),
+      aviso,
       usuario: req.usuario ?? '',
       atualizado: SincronizacaoModel.ultima()?.em ?? new Date().toISOString(),
       obrasDisponiveis: dados.obras,

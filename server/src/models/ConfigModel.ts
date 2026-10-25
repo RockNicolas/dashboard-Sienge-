@@ -9,4 +9,9 @@ export const ConfigModel = {
   definir(chave: string, valor: string): void {
     db.prepare('INSERT OR REPLACE INTO config VALUES (?,?)').run(chave, valor);
   },
+
+  remover(...chaves: string[]): void {
+    const q = db.prepare('DELETE FROM config WHERE chave = ?');
+    chaves.forEach(c => q.run(c));
+  },
 };

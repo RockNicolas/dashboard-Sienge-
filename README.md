@@ -27,7 +27,7 @@ web/src
 
 ```
 npm install
-copy .env.example .env      # preencha as credenciais do Sienge e do painel
+copy .env.example .env      # preencha o login do painel (o Sienge é configurado na tela Configurações)
 npm run dev                 # API :3000  +  Vite :5173  → abra http://localhost:5173
 ```
 
@@ -53,19 +53,36 @@ Sem credenciais do Sienge (ou com demonstração marcada) usa dados de demonstra
   sem senha no `.env`, uma aleatória é impressa no console. Cookie HttpOnly (12h); 5 tentativas erradas bloqueiam o IP por 5 min.
   Para uso fora da sua máquina, coloque atrás de proxy com HTTPS.
 - Cada sincronização grava compras/consumos no SQLite (o período é substituído, refletindo edições e cancelamentos);
-  se o Sienge cair, usa o último dado salvo. Em modo demonstração nada é gravado — apague `data/` ao passar para o real.
+  se o Sienge cair, usa o último dado salvo. Os itens de cada pedido (1 requisição por pedido) ficam guardados em `pedido_itens`:
+  se a cota do dia acabar no meio, a sincronização grava o que conseguiu, mostra um aviso de "sincronização parcial" e continua
+  de onde parou na próxima (uma reserva de 5% da cota, mínimo 5, fica livre para o "Testar conexão"). Em modo demonstração nada é gravado — apague `data/` ao passar para o real.
 - Novo usuário: `npx tsx -e "import('./server/src/models/UsuarioModel.ts').then(m=>m.UsuarioModel.criar('fulano','senha'))"`
+
+## Financeiro (contas a pagar, a receber, caixa e bancos)
+
+Menu **Financeiro**: Financeiro geral, Contas a pagar, Contas a receber e Caixa e bancos. Todas as telas respeitam o filtro de
+**período** e **obra** do topo e têm o seletor **Mensal / Semanal** (semana começa na segunda-feira).
+
+- Fontes (`server/src/services/financeiro.service.ts`): `bulk-data/v1/outcome` (parcelas a pagar), `bulk-data/v1/income`
+  (parcelas a receber), `bulk-data/v1/bank-movement` (movimentos), `/checking-accounts` e `/accounts-balances` (saldos).
+- **Obra:** a pagar e movimentos usam a apropriação por obra do Sienge; a receber usa o centro de custo (o `/income` não traz obra).
+  Com filtro de obra, cada lançamento entra proporcional ao rateio (ex.: título 60% obra A / 40% obra B). Saldo bancário não é por obra.
+- **Cota:** sincroniza uma janela fixa (vencimentos de 12 meses atrás a 6 meses à frente), então mudar o filtro não gasta cota.
+  Cada sincronização usa 3 requisições bulk-data; o intervalo se ajusta ao plano (Free, 10 bulk/dia: a cada ~7h). "↻ Sienge" força.
+- A confirmar no seu tenant: `correctionIndexerId` do contas a pagar (usa 0 = sem correção), valores de `bankMovementOperationType`
+  (D/S tratados como saída) e se o centro de custo do contas a receber corresponde à obra.
 
 ## Conexão com o Sienge e cota diária (tela Configurações)
 
-- Subdomínio, usuário e senha da API são cadastrados **no painel** (menu Configurações), sem editar o `.env`.
+- Subdomínio, usuário e senha da API são cadastrados **só no painel** (menu Configurações); o `.env` não tem dados do Sienge.
   A senha é gravada criptografada (AES-256-GCM) no SQLite, com chave local em `data/secret.key` (não perca nem compartilhe; a pasta `data/` está no .gitignore).
-  Os valores do painel têm prioridade sobre o `.env`, que continua valendo como padrão inicial.
 - Botão **Testar conexão** faz 1 chamada ao Sienge para validar as credenciais (mostra 401/403/404 de forma clara).
 - Marcar **Usar dados de demonstração** volta ao modo demo sem apagar as credenciais.
 - **Cota diária:** cada chamada ao Sienge é contada por dia (SQLite). O topo do painel mostra "API hoje X / limite" e a tela Configurações
-  mostra usadas/restantes/erros e os últimos 14 dias. Defina o **limite diário** do seu contrato; ao atingi-lo o painel para de chamar o Sienge
-  e usa os dados já salvos. Se a API devolver cabeçalhos de rate limit, eles aparecem na tela.
+  mostra usadas/restantes/erros e os últimos 14 dias. Selecione o **plano da API** contratado (Free, Start, Special… — tabela em
+  `server/src/services/planos.ts`, conforme a documentação do Sienge); o limite diário vem do plano e, ao atingi-lo, o painel para de chamar
+  o Sienge e usa os dados já salvos. O plano escolhido é conferido com o limite que o Sienge devolve no cabeçalho `x-ratelimit-limit-day`
+  (aviso na tela e no "Testar conexão" se não bater).
 
 ## Importar relatórios em PDF (menu "Importar relatórios")
 
@@ -85,7 +102,7 @@ Novos tipos de relatório entram em `server/src/services/relatorio.service.ts`.
 ## Integração Sienge — validar
 
 `server/src/services/sienge.service.ts` usa `/enterprises`, `/purchase-orders` (+ `/items`) e, para consumo,
-`/stock-movements` (configurável em `SIENGE_ENDPOINT_CONSUMO`). Confira os nomes de campos no seu tenant e
+`/stock-movements` (configurável na tela Configurações). Confira os nomes de campos no seu tenant e
 ajuste só as funções `normalizar*`; o resto não muda.
 
 ## Próximos passos sugeridos

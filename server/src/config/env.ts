@@ -23,11 +23,5 @@ export const env = {
   sessaoMs: 12 * 60 * 60 * 1000,
   painelUsuario: e.PAINEL_USUARIO || 'admin',
   painelSenha: e.PAINEL_SENHA,
-  sienge: {
-    subdominio: e.SIENGE_SUBDOMINIO,
-    usuario: e.SIENGE_USUARIO,
-    senha: e.SIENGE_SENHA,
-    baseUrl: e.SIENGE_BASE_URL || `https://api.sienge.com.br/${e.SIENGE_SUBDOMINIO}/public/api/v1`,
-    endpointConsumo: e.SIENGE_ENDPOINT_CONSUMO || '/stock-movements',
-  },
+  // conexão com o Sienge (subdomínio, usuário, senha, etc.) é configurada no painel — ver config.service.ts
 };

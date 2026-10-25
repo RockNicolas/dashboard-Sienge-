@@ -14,3 +14,8 @@ export const porMes = (serie: { mes: string; valor: number }[], ms: string[]) =>
   ms.map(m => serie.find(x => x.mes === m)?.valor ?? 0);
 
 export const dataBR = (iso: string) => iso.split('-').reverse().join('/');
+
+const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+/** Rótulo do período do financeiro: "out/26" (mês) ou "19/10" (semana que começa nesse dia). */
+export const rotuloPeriodo = (p: string) =>
+  p.length === 7 ? `${MESES[Number(p.slice(5, 7)) - 1]}/${p.slice(2, 4)}` : `${p.slice(8, 10)}/${p.slice(5, 7)}`;

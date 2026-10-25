@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { DashboardProvider, useDashboard } from '../hooks/useDashboard';
@@ -16,6 +16,10 @@ const ICONES: Record<string, string> = {
   tag: 'M20 13l-7 7-9-9V4h7zM8 8h.01',
   clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
   upload: 'M12 16V4M7 9l5-5 5 5M4 20h16',
+  money: 'M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6',
+  out: 'M7 17L17 7M8 7h9v9',
+  in: 'M17 7L7 17M16 17H7V8',
+  bank: 'M3 10h18M5 10v8M9 10v8M15 10v8M19 10v8M2 21h20M12 3l9 5H3z',
   gear: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z',
 };
 
@@ -61,7 +65,7 @@ function Topo() {
         <button onClick={() => aplicar(f)}>Aplicar</button>
         <button className="sec" onClick={atualizar} title="Recarrega do Sienge">↻ Sienge</button>
         <button className="sec" onClick={() => window.print()}>PDF</button>
-        {dados && <PilulaCota q={dados.quota} />}
+        {dados?.quota.conectado && <PilulaCota q={dados.quota} />}
       </div>
     </header>
   );
@@ -94,9 +98,12 @@ function Conteudo() {
         <div className="brand"><i>S</i><span>Compras &amp; Consumo<small>Painel Sienge</small></span></div>
         <nav>
           {MENU.map(m => (
-            <NavLink key={m.to} to={m.to} end={m.end} title={m.label} className={({ isActive }) => (isActive ? 'on' : '')}>
-              <Icone nome={m.icone} />{m.label}
-            </NavLink>
+            <Fragment key={m.to}>
+              {m.secao && <small className="nav-secao">{m.secao}</small>}
+              <NavLink to={m.to} end={m.end} title={m.label} className={({ isActive }) => (isActive ? 'on' : '')}>
+                <Icone nome={m.icone} />{m.label}
+              </NavLink>
+            </Fragment>
           ))}
         </nav>
         <div className="side-foot">
@@ -109,6 +116,7 @@ function Conteudo() {
         <Topo />
         <main key={`${tema}-${escuro(tema)}`}>
           {erro && <div className="erro">Erro: {erro}</div>}
+          {!erro && dados?.aviso && <div className="aviso-sync">{dados.aviso}</div>}
           {filtros.obra && dados && (
             <p className="muted aviso-filtro">
               Filtro de obra ativo: vale para o consumo. Compras e fornecedores não são divididos por obra, então seguem com o total.

@@ -1,11 +1,14 @@
-// Configuração do Sienge editável pelo painel. Valores salvos no SQLite têm prioridade sobre o .env;
+// Configuração do Sienge editável pelo painel (tela Configurações), salva no SQLite — não vem do .env;
 // a senha é gravada criptografada (AES-256-GCM) com uma chave local em data/secret.key.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { env, ROOT } from '../config/env';
+import { ROOT } from '../config/env';
 import { ConfigModel } from '../models/ConfigModel';
 import { DadosModel } from '../models/DadosModel';
+import { PedidoItensModel } from '../models/PedidoItensModel';
+import { UsoApiModel } from '../models/UsoApiModel';
+import { PLANOS, planoPorId, planoPorLimite } from './planos';
 import type { ConfigEntrada, ConfigPublica } from '../types';
 
 const KEY_FILE = path.join(ROOT, 'data', 'secret.key');
@@ -39,25 +42,31 @@ export interface SiengeCfg {
   usuario: string;
   senha: string;
   endpointConsumo: string;
-  limiteDiario: number;
+  plano: string;           // id do plano contratado ('' = não informado)
+  limiteDiario: number;    // requisições REST/dia do plano (0 = sem plano)
   baseUrl: string;
 }
+
+// instalações antigas guardavam o número do limite; converte para o plano equivalente
+const planoSalvo = () =>
+  ConfigModel.obter('plano') ?? planoPorLimite(Number(ConfigModel.obter('limiteDiario')))?.id ?? '';
 
 const base = (sub: string) => process.env.SIENGE_BASE_URL ?? `https://api.sienge.com.br/${sub}/public/api/v1`;
 
 export const ConfigService = {
-  /** Configuração efetiva (painel > .env), com a senha em claro — só para uso interno do servidor. */
+  /** Configuração efetiva salva no painel, com a senha em claro — só para uso interno do servidor. */
   efetiva(): SiengeCfg {
-    const subdominio = ConfigModel.obter('subdominio') ?? env.sienge.subdominio ?? '';
+    const subdominio = ConfigModel.obter('subdominio') ?? '';
     const senhaSalva = ConfigModel.obter('senha');
-    const mockSalvo = ConfigModel.obter('usarMock');
+    const plano = planoPorId(planoSalvo());
     return {
-      usarMock: mockSalvo != null ? mockSalvo === '1' : process.env.USE_MOCK === 'true',
+      usarMock: ConfigModel.obter('usarMock') === '1',
       subdominio,
-      usuario: ConfigModel.obter('usuario') ?? env.sienge.usuario ?? '',
-      senha: senhaSalva != null ? decifrar(senhaSalva) : env.sienge.senha ?? '',
-      endpointConsumo: ConfigModel.obter('endpointConsumo') ?? env.sienge.endpointConsumo,
-      limiteDiario: Number(ConfigModel.obter('limiteDiario') ?? process.env.SIENGE_LIMITE_DIARIO ?? 0) || 0,
+      usuario: ConfigModel.obter('usuario') ?? '',
+      senha: senhaSalva != null ? decifrar(senhaSalva) : '',
+      endpointConsumo: ConfigModel.obter('endpointConsumo') ?? '/stock-movements',
+      plano: plano?.id ?? '',
+      limiteDiario: plano?.rest ?? 0,
       baseUrl: base(subdominio),
     };
   },
@@ -77,7 +86,7 @@ export const ConfigService = {
     const c = ConfigService.efetiva();
     return {
       usarMock: c.usarMock, mockEfetivo: ConfigService.mock(), subdominio: c.subdominio, usuario: c.usuario,
-      senhaDefinida: !!c.senha, endpointConsumo: c.endpointConsumo, limiteDiario: c.limiteDiario,
+      senhaDefinida: !!c.senha, endpointConsumo: c.endpointConsumo, plano: c.plano, planos: PLANOS,
     };
   },
 
@@ -88,15 +97,28 @@ export const ConfigService = {
     if (typeof e.senha === 'string' && e.senha) ConfigModel.definir('senha', cifrar(e.senha));
     if (typeof e.endpointConsumo === 'string' && e.endpointConsumo.trim())
       ConfigModel.definir('endpointConsumo', e.endpointConsumo.trim().startsWith('/') ? e.endpointConsumo.trim() : `/${e.endpointConsumo.trim()}`);
-    if (e.limiteDiario != null) ConfigModel.definir('limiteDiario', String(Math.max(0, Math.floor(Number(e.limiteDiario)) || 0)));
+    if (typeof e.plano === 'string' && (e.plano === '' || planoPorId(e.plano))) ConfigModel.definir('plano', e.plano);
+  },
+
+  /**
+   * Esquece o usuário de API: credenciais, plano, contagem de cota/cabeçalhos e itens de pedido em cache.
+   * Compras e consumos já sincronizados continuam salvos.
+   */
+  desconectar(): void {
+    ConfigModel.remover('subdominio', 'usuario', 'senha', 'plano', 'limiteDiario');
+    UsoApiModel.limpar();
+    PedidoItensModel.limpar();
   },
 
   /** Aplica campos do formulário sobre a configuração salva, sem gravar (usado no "Testar conexão"). */
   simular(e: ConfigEntrada): SiengeCfg {
     const c = ConfigService.efetiva();
     const sub = (e.subdominio ?? c.subdominio).trim().toLowerCase();
+    const plano = e.plano != null ? planoPorId(e.plano) : planoPorId(c.plano);
     return {
       ...c,
+      plano: plano?.id ?? '',
+      limiteDiario: plano?.rest ?? 0,
       subdominio: sub,
       usuario: (e.usuario ?? c.usuario).trim(),
       senha: e.senha ? e.senha : c.senha,

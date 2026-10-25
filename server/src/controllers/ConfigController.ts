@@ -14,7 +14,7 @@ const corpo = (req: Request): ConfigEntrada => {
     usuario: s(b.usuario),
     senha: s(b.senha),
     endpointConsumo: s(b.endpointConsumo),
-    limiteDiario: typeof b.limiteDiario === 'number' ? b.limiteDiario : undefined,
+    plano: s(b.plano),
   };
 };
 
@@ -25,6 +25,12 @@ export const ConfigController = {
 
   salvar(req: Request, res: Response): void {
     ConfigService.salvar(corpo(req));
+    SyncService.invalidar();
+    res.json(ConfigService.publica());
+  },
+
+  desconectar(_req: Request, res: Response): void {
+    ConfigService.desconectar();
     SyncService.invalidar();
     res.json(ConfigService.publica());
   },

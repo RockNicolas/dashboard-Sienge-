@@ -27,12 +27,18 @@ CREATE TABLE IF NOT EXISTS api_uso (
 CREATE TABLE IF NOT EXISTS importacoes (
   id INTEGER PRIMARY KEY AUTOINCREMENT, criado TEXT, tipo TEXT, arquivo TEXT, obraId TEXT, obra TEXT,
   de TEXT, ate TEXT, linhas INTEGER, total REAL, distribuido INTEGER);
+CREATE TABLE IF NOT EXISTS pedido_itens (pedido TEXT PRIMARY KEY, itens TEXT NOT NULL, em TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS fin_registros (tipo TEXT NOT NULL, chave TEXT NOT NULL, data TEXT, json TEXT NOT NULL, PRIMARY KEY (tipo, chave));
+CREATE TABLE IF NOT EXISTS fin_snapshot (tipo TEXT PRIMARY KEY, json TEXT NOT NULL, em TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS i_fin_data ON fin_registros(tipo, data);
 CREATE INDEX IF NOT EXISTS i_compras_data ON compras(data);
 CREATE INDEX IF NOT EXISTS i_consumos_data ON consumos(data);
 `);
 
 // consumos importados de relatórios ficam marcados com origem 'rel:<id>'; os da API com 'api'
 try { db.exec("ALTER TABLE consumos ADD COLUMN origem TEXT DEFAULT 'api'"); } catch { /* coluna já existe */ }
+// requisições bulk-data têm cota diária própria
+try { db.exec('ALTER TABLE api_uso ADD COLUMN bulk INTEGER NOT NULL DEFAULT 0'); } catch { /* coluna já existe */ }
 
 export function transacao(fn: () => void): void {
   db.exec('BEGIN');

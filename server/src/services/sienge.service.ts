@@ -5,6 +5,7 @@
 // Se algum campo vier com outro nome, ajuste apenas as funções `normalizar*` abaixo.
 import type { Compra, Consumo, Dados, TesteConexao } from '../types';
 import { ConfigService, type SiengeCfg } from './config.service';
+import { PedidoItensModel } from '../models/PedidoItensModel';
 import { QuotaService } from './quota.service';
 
 const PAGE = 200;
@@ -13,21 +14,25 @@ const PAGE = 200;
 type Raw = Record<string, any>;
 type Params = Record<string, string | number | undefined>;
 
-async function get(cfg: SiengeCfg, path: string, params: Params = {}): Promise<Raw> {
-  const url = new URL(cfg.baseUrl + path);
+/** Endereço das APIs bulk-data (…/public/api/bulk-data/v1), diferente do REST (…/public/api/v1). */
+export const bulkUrl = (cfg: SiengeCfg) => cfg.baseUrl.replace(/\/v1$/, '/bulk-data/v1');
+
+export async function get(cfg: SiengeCfg, path: string, params: Params = {}, base = cfg.baseUrl): Promise<Raw> {
+  const url = new URL(base + path);
   Object.entries(params).forEach(([k, v]) => v != null && url.searchParams.set(k, String(v)));
   const auth = 'Basic ' + Buffer.from(`${cfg.usuario}:${cfg.senha}`).toString('base64');
+  const bulk = base !== cfg.baseUrl;
 
   for (let tent = 0; tent < 4; tent++) {
-    QuotaService.garantir();
+    QuotaService.garantir(bulk);
     let res: Response;
     try {
       res = await fetch(url, { headers: { Authorization: auth, Accept: 'application/json' } });
     } catch (e) {
-      QuotaService.registrar(null, true);
+      QuotaService.registrar(null, true, bulk);
       throw e;
     }
-    QuotaService.registrar(res, !res.ok);
+    QuotaService.registrar(res, !res.ok, bulk);
     if (res.status === 429) { await new Promise(r => setTimeout(r, 1500 * (tent + 1))); continue; }
     if (!res.ok) throw new Error(`Sienge ${res.status} em ${path}: ${(await res.text()).slice(0, 200)}`);
     return res.json() as Promise<Raw>;
@@ -35,7 +40,7 @@ async function get(cfg: SiengeCfg, path: string, params: Params = {}): Promise<R
   throw new Error(`Sienge: limite de requisições excedido em ${path}`);
 }
 
-async function listarTudo(cfg: SiengeCfg, path: string, params: Params = {}): Promise<Raw[]> {
+export async function listarTudo(cfg: SiengeCfg, path: string, params: Params = {}): Promise<Raw[]> {
   const out: Raw[] = [];
   for (let offset = 0; ; offset += PAGE) {
     const j = await get(cfg, path, { ...params, limit: PAGE, offset });
@@ -93,10 +98,23 @@ function normalizarConsumo(m: Raw, obras: Map<string, string>): Consumo {
   };
 }
 
+export interface Carga {
+  dados: Dados;
+  pedidos: number;     // pedidos no período
+  pendentes: number;   // pedidos cujos itens ainda não foram baixados (cota do dia acabou)
+}
+
 export const SiengeService = {
-  async carregar(from: string, to: string): Promise<Dados> {
+  /**
+   * Busca o período no Sienge cabendo na cota diária: listas primeiro (poucas requisições) e, com o que sobrar,
+   * os itens dos pedidos ainda não baixados, dos mais recentes para os mais antigos. Os itens ficam salvos,
+   * então se a cota acabar a próxima sincronização continua de onde parou.
+   */
+  async carregar(from: string, to: string): Promise<Carga> {
     const cfg = ConfigService.efetiva();
     if (!ConfigService.completa(cfg)) throw new Error('Configure subdomínio, usuário e senha do Sienge na tela Configurações.');
+    if (QuotaService.disponivel() <= 0)
+      throw new Error('Cota diária da API do Sienge no fim (o restante fica reservado). Usando os dados já salvos.');
 
     const empresas = await listarTudo(cfg, '/enterprises').catch(e => {
       if (/Cota diária/.test((e as Error).message)) throw e;
@@ -105,8 +123,6 @@ export const SiengeService = {
     const obras = new Map(empresas.map(e => [String(e.id), String(e.name ?? e.commercialName)]));
 
     const pedidos = await listarTudo(cfg, '/purchase-orders', { startDate: from, endDate: to });
-    const itens = await paralelo(pedidos, 5, p => listarTudo(cfg, `/purchase-orders/${p.id}/items`));
-    const compras = pedidos.flatMap((p, i) => itens[i].map(it => normalizarItemCompra(p, it)));
 
     const movs = await listarTudo(cfg, cfg.endpointConsumo, { startDate: from, endDate: to }).catch(e => {
       if (/Cota diária/.test((e as Error).message)) throw e;
@@ -115,7 +131,26 @@ export const SiengeService = {
     });
     const consumos = movs.map(m => normalizarConsumo(m, obras));
 
-    return { compras, consumos, obras: [...obras].map(([id, nome]) => ({ id, nome })) };
+    const itens = PedidoItensModel.obter(pedidos.map(p => String(p.id)));
+    const faltando = pedidos
+      .filter(p => !itens.has(String(p.id)))
+      .sort((a, b) => dia(b.date ?? b.issueDate).localeCompare(dia(a.date ?? a.issueDate)));
+    await paralelo(faltando.slice(0, QuotaService.disponivel()), 5, async p => {
+      try {
+        const it = await listarTudo(cfg, `/purchase-orders/${p.id}/items`);
+        PedidoItensModel.salvar(String(p.id), it);
+        itens.set(String(p.id), it);
+      } catch (e) {
+        if (!/Cota diária/.test((e as Error).message)) console.warn(`[sienge] itens do pedido ${p.id}:`, (e as Error).message);
+      }
+    });
+    const compras = pedidos.flatMap(p => (itens.get(String(p.id)) ?? []).map(it => normalizarItemCompra(p, it)));
+
+    return {
+      dados: { compras, consumos, obras: [...obras].map(([id, nome]) => ({ id, nome })) },
+      pedidos: pedidos.length,
+      pendentes: pedidos.filter(p => !itens.has(String(p.id))).length,
+    };
   },
 
   /** Faz uma chamada mínima (1 requisição) para validar subdomínio, usuário e senha. */
@@ -123,7 +158,8 @@ export const SiengeService = {
     if (!ConfigService.completa(cfg)) return { ok: false, mensagem: 'Preencha subdomínio, usuário e senha.' };
     try {
       await get(cfg, '/enterprises', { limit: 1 });
-      return { ok: true, mensagem: 'Conexão com o Sienge OK.' };
+      const plano = QuotaService.verificarPlano(cfg.plano);
+      return { ok: plano.confere !== false, mensagem: `Conexão com o Sienge OK. ${plano.mensagem}` };
     } catch (e) {
       const m = (e as Error).message;
       if (/ 401 /.test(m)) return { ok: false, mensagem: 'Usuário ou senha da API inválidos (401).' };
