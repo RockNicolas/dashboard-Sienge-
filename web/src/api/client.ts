@@ -1,6 +1,6 @@
 import type {
-  Agrupamento, ConfigEntrada, ConfigPublica, DashboardResponse, FinanceiroResponse, ImportConfirmacao, ImportListagem, ImportPreview, ImportResultado,
-  QuotaInfo, Sincronizacao, TesteConexao,
+  Agrupamento, ConfigEntrada, ConfigPublica, CustosObraResponse, DashboardResponse, FinanceiroResponse, ImportConfirmacao, ImportListagem,
+  ImportPreview, ImportResultado, QuotaInfo, Sincronizacao, TesteConexao,
 } from '@server/types';
 
 export class NaoAutenticado extends Error {}
@@ -41,6 +41,26 @@ export const api = {
     if (f.obra) q.set('obra', f.obra);
     if (forcar) q.set('forcar', '1');
     return req<FinanceiroResponse>('/api/financeiro?' + q);
+  },
+  custosObra: (f: FiltrosUI, forcar = false) => {
+    const q = new URLSearchParams();
+    if (f.from) q.set('from', f.from);
+    if (f.to) q.set('to', f.to);
+    if (f.obra) q.set('obra', f.obra);
+    if (forcar) q.set('forcar', '1');
+    return req<CustosObraResponse>('/api/custos-obra?' + q);
+  },
+  /** Relatório em Excel (gerado no servidor). Devolve o arquivo e o nome sugerido. */
+  exportarExcel: async (f: FiltrosUI, secoes: string[], graficos: boolean) => {
+    const q = new URLSearchParams({ secoes: secoes.join(',') });
+    if (f.from) q.set('from', f.from);
+    if (f.to) q.set('to', f.to);
+    if (f.obra) q.set('obra', f.obra);
+    if (graficos) q.set('graficos', '1');
+    const r = await fetch('/api/exportar/excel?' + q);
+    if (r.status === 401) throw new NaoAutenticado();
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).erro ?? r.statusText);
+    return { blob: await r.blob(), cabecalho: r.headers.get('Content-Disposition') };
   },
   config: () => req<ConfigPublica>('/api/config'),
   salvarConfig: (c: ConfigEntrada) => req<ConfigPublica>('/api/config', json('PUT', c)),

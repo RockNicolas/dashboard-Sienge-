@@ -1,4 +1,5 @@
 import { db } from './db';
+import { FornecedorModel } from './FornecedorModel';
 import type { Compra, Consumo, Dados, Obra } from '../types';
 
 // chave estável; duplicatas idênticas dentro do mesmo lote ganham sufixo
@@ -21,9 +22,14 @@ export const DadosModel = {
     db.prepare('DELETE FROM compras WHERE data >= ? AND data <= ?').run(de, ate);
     db.prepare("DELETE FROM consumos WHERE data >= ? AND data <= ? AND (origem IS NULL OR origem = 'api')").run(de, ate);
 
-    const ic = db.prepare('INSERT OR REPLACE INTO compras VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
+    const ic = db.prepare(`INSERT OR REPLACE INTO compras
+      (chave,data,pedido,fornecedorId,fornecedor,insumoId,insumo,un,qtd,preco,valor,prazoEntrega,obraId,obra,
+       item,codigo,detalhe,marca,precoUnitario,situacao,autorizado,atrasado,comprador,condicaoPagamento)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
     compras.forEach((c, i) => ic.run(kc[i], c.data, c.pedido, c.fornecedorId, c.fornecedor,
-      c.insumoId, c.insumo, c.un, c.qtd, c.preco, c.valor, c.prazoEntrega));
+      c.insumoId, c.insumo, c.un, c.qtd, c.preco, c.valor, c.prazoEntrega, c.obraId, c.obra,
+      c.item, c.codigo, c.detalhe, c.marca, c.precoUnitario, c.situacao, c.autorizado ? 1 : 0, c.atrasado ? 1 : 0,
+      c.comprador, c.condicaoPagamento));
 
     const iu = db.prepare('INSERT OR REPLACE INTO consumos (chave,data,obraId,obra,insumoId,insumo,un,qtd,valor) VALUES (?,?,?,?,?,?,?,?,?)');
     consumos.forEach((c, i) => iu.run(ku[i], c.data, c.obraId, c.obra,
@@ -55,11 +61,26 @@ export const DadosModel = {
   },
 
   ler(de: string, ate: string): Dados {
-    const q = (t: string) => db.prepare(`SELECT * FROM ${t} WHERE data >= ? AND data <= ?`).all(de, ate);
+    // nome do fornecedor e da obra vêm dos cadastros quando existem (chegam depois, em outras sincronizações)
+    const compras = db.prepare(`
+      SELECT c.data, c.pedido, c.fornecedorId,
+        COALESCE(NULLIF(f.nome, ''), NULLIF(f.fantasia, ''), c.fornecedor) AS fornecedor,
+        c.insumoId, c.insumo, c.un, c.qtd, c.preco, c.valor, c.prazoEntrega,
+        COALESCE(c.obraId, '') AS obraId,
+        CASE WHEN COALESCE(c.obraId, '') = '' THEN '' ELSE COALESCE(NULLIF(o.nome, ''), c.obra, '') END AS obra,
+        COALESCE(c.item, 0) AS item, COALESCE(c.codigo, '') AS codigo, COALESCE(c.detalhe, '') AS detalhe,
+        COALESCE(c.marca, '') AS marca, COALESCE(c.precoUnitario, c.preco) AS precoUnitario,
+        COALESCE(c.situacao, '') AS situacao, COALESCE(c.autorizado, 1) AS autorizado, COALESCE(c.atrasado, 0) AS atrasado,
+        COALESCE(c.comprador, '') AS comprador, COALESCE(c.condicaoPagamento, '') AS condicaoPagamento
+      FROM compras c
+      LEFT JOIN fornecedores f ON f.id = c.fornecedorId
+      LEFT JOIN obras o ON o.id = c.obraId
+      WHERE c.data >= ? AND c.data <= ?`).all(de, ate) as unknown as (Omit<Compra, 'autorizado' | 'atrasado'> & { autorizado: number; atrasado: number })[];
     return {
-      compras: q('compras') as unknown as Compra[],
-      consumos: q('consumos') as unknown as Consumo[],
+      compras: compras.map(c => ({ ...c, autorizado: c.autorizado !== 0, atrasado: c.atrasado !== 0 })),
+      consumos: db.prepare('SELECT * FROM consumos WHERE data >= ? AND data <= ?').all(de, ate) as unknown as Consumo[],
       obras: db.prepare('SELECT * FROM obras').all() as unknown as Obra[],
+      fornecedores: FornecedorModel.todos(),
     };
   },
 };

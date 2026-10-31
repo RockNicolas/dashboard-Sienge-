@@ -1,6 +1,6 @@
-# Painel Sienge — Compras e Consumo
+# Painel Sienge — Suprimentos
 
-Dashboard de compras, fornecedores e consumo de insumos por obra, alimentado pela API do Sienge.
+Dashboard de suprimentos (histórico de compras, fornecedores, custos e resultado por obra), alimentado pela API do Sienge.
 
 **Stack:** Node + Express + TypeScript (API, MVC) · Vite + React + TypeScript + React Router (frontend) · SQLite (`node:sqlite`).
 
@@ -34,11 +34,40 @@ npm run dev                 # API :3000  +  Vite :5173  → abra http://localhos
 Produção: `npm run build` e `npm start` (a API serve `web/dist` em http://localhost:3000).
 Sem credenciais do Sienge (ou com demonstração marcada) usa dados de demonstração.
 
-## Indicadores
+## Menu (foco atual: Visão geral + Suprimentos)
 
-1. **Consumo de material** · 2. **Ranking de fornecedores** · 3. **Consumo por obra** · 4. **Insumos que mais gastam (Curva ABC)**
-5. **Comprado × Consumido** — "comprei 100 cimentos, quantos foram p/ a obra X e Y?" (saldo e % usado)
-6. Extras: oportunidades de preço (variação e economia potencial), histórico de sincronizações, impressão em PDF
+- **Visão geral** — total comprado, pedidos, ticket médio, fornecedores, materiais, obras atendidas; compras por mês e tops.
+- **Suprimentos**
+  1. **Histórico de compras** — cada item de pedido de compra com os campos do Sienge (pedido, item, situação, autorizado,
+     entrega em atraso, obra, fornecedor, código/detalhe/marca do insumo, quantidade, preço unitário, preço líquido, valor,
+     comprador, condição de pagamento) e, por material, último preço, menor/médio/maior e preço médio de cada mês.
+  2. **Fornecedores** — identificação pelo cadastro de credores (nome, fantasia, CNPJ/CPF, cidade, telefone, e-mail) e ranking
+     por valor ou nº de pedidos, com curva ABC, ticket médio, obras atendidas e pedidos com entrega em atraso.
+  3. **Custos por obra** — material comprado por obra (pedidos) e, dos Insumos da Obra, orçado × pendente (pedidos e contratos
+     em aberto) × atendido (NFs de compra e medições) por tipo de insumo, por serviço (item do orçamento/EDT) e por insumo.
+  4. **Resultado da obra** — receitas (contas a receber) − despesas (contas a pagar) por obra, margem, recebido × pago e despesas
+     por plano financeiro.
+- **Configurações** fica no rodapé do menu.
+- **Filtros (topo):** **Período** com atalhos (Últimos 12 meses, Este mês, Mês passado, Este ano) e a **obra** aplicam na hora
+  em todas as telas; datas digitadas (De/Até, "Personalizado") são aplicadas no botão **Aplicar**. Cada período novo é uma
+  consulta ao Sienge (pedidos com data do pedido no intervalo). Os filtros continuam depois do F5, e o PDF traz período e obra
+  no cabeçalho.
+- **Exportar** (botão no topo): escolhe o formato, os filtros da exportação (período, obra — começam iguais aos da tela) e as
+  seções (Visão geral, Histórico de compras, Fornecedores, Custos por obra, Resultado da obra):
+  - **PDF** — gerado no navegador (`web/src/lib/relatorio-pdf.ts`, jsPDF carregado só ao exportar): A4 deitado, cabeçalho e
+    rodapé com período/obra e "Página X de Y", uma seção por página com indicadores, gráficos e tabelas.
+  - **Excel** — gerado no servidor (`GET /api/exportar/excel`, `server/src/services/exportacao.service.ts`): uma aba por seção,
+    cada uma como Tabela do Excel (filtro em todas as colunas, cabeçalho congelado, R$/%/datas formatados). A lista completa de
+    itens de pedido vai no Excel (o PDF mostra os 300 mais recentes).
+  - **Excel com dashboard** — as mesmas abas + aba **Dashboard** com indicadores e **gráficos nativos do Excel** (colunas, barras,
+    pizza) ligados à aba "Dados dos gráficos": mudou o dado, o gráfico acompanha. O ExcelJS não cria gráficos, então eles são
+    escritos em DrawingML e injetados no arquivo (`server/src/services/excel-graficos.ts`). O Dashboard imprime numa página.
+- **Telas menores:** no celular o menu vira o botão ☰; as tabelas se ajustam ao espaço do cartão (container queries em
+  `styles.css`) — em cartão estreito cada linha vira um cartão, e as colunas marcadas como secundárias (`sec` / `col-sec`)
+  somem quando falta espaço.
+
+As demais telas (comprado × consumido, consumo, curva ABC, preços, financeiro, histórico de sincronizações, importar relatórios)
+estão **comentadas** em `web/src/routes.tsx`: para voltar com uma, descomente o import, o item do `MENU` e a rota.
 
 ## Segurança e testes
 
@@ -99,11 +128,29 @@ o painel passa a mostrar só os dados importados (o modo demonstração é desli
 Atenção: se a API também trouxer o consumo do mesmo período, ele será somado ao importado — evite importar período já coberto pela API.
 Novos tipos de relatório entram em `server/src/services/relatorio.service.ts`.
 
-## Integração Sienge — validar
+## Integração Sienge — suprimentos
 
-`server/src/services/sienge.service.ts` usa `/enterprises`, `/purchase-orders` (+ `/items`) e, para consumo,
-`/stock-movements` (configurável na tela Configurações). Confira os nomes de campos no seu tenant e
-ajuste só as funções `normalizar*`; o resto não muda.
+Campos conforme as especificações oficiais (`https://api.sienge.com.br/docs/yaml-files/<nome>.yaml`); se algo vier diferente no
+seu tenant, ajuste só as funções `normalizar*`.
+
+| Dado | Endpoint (spec) | Custo na cota |
+|---|---|---|
+| Obras | `/enterprises` (enterprise-v1) | REST, paginado |
+| Pedidos de compra | `/purchase-orders` (purchase-orders-v1) | REST, paginado |
+| Itens do pedido | `/purchase-orders/{id}/items` | REST, 1 por pedido (guardado; só pedidos novos) |
+| Fornecedor (nome, CNPJ, contato) | `/creditors` ou `/creditors/{id}` (creditor-v1) | REST, uma vez por credor (guardado) |
+| Custos por obra | `bulk-data/v1/building/resources` (bulk-data-building-resource-v1) | BULK, 1 por obra a cada 12h |
+| Resultado da obra | `bulk-data/v1/outcome` e `/income` (financeiro) | BULK, 3 por sincronização |
+
+- O pedido de compra **não traz o nome do fornecedor** nem o **total do item**: o nome vem de `/creditors` e o valor é
+  quantidade × preço líquido (`netPrice`; sem ele, `unitPrice`). Pedidos **cancelados** e **reprovados** ficam de fora.
+- Credores: a 1ª página de `/creditors` diz quantos existem; se a lista inteira custar menos que buscar um a um, baixa a lista.
+  Usa no máximo metade do que sobra da cota REST, para os itens dos pedidos também andarem.
+- Insumos da Obra: sem filtro de obra, busca as obras com mais compras no período (até 12); com filtro, a obra escolhida.
+  A cota **bulk-data** é dividida: metade para o financeiro, o resto para os Insumos da Obra (no plano Free, o financeiro passa
+  a sincronizar a cada ~14h).
+- Consumo: o endpoint padrão `/stock-movements` **não existe** na API pública do Sienge; como as telas de consumo estão ocultas,
+  essa chamada está desligada em `sienge.service.ts` (não gasta cota).
 
 ## Próximos passos sugeridos
 

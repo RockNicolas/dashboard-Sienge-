@@ -15,10 +15,23 @@ interface Estado {
 
 const Ctx = createContext<Estado | null>(null);
 
+// filtros ficam guardados na aba (sobrevivem ao F5; uma aba nova começa do padrão)
+const CHAVE = 'painel.filtros';
+function lerFiltros(): FiltrosUI {
+  try {
+    const j = JSON.parse(sessionStorage.getItem(CHAVE) ?? 'null') as Partial<FiltrosUI> | null;
+    if (j && typeof j === 'object') return { from: String(j.from ?? ''), to: String(j.to ?? ''), obra: String(j.obra ?? '') };
+  } catch { /* sem storage */ }
+  return { from: '', to: '', obra: '' };
+}
+
 /** Controller do painel: guarda filtros, busca o dashboard e trata sessão expirada. */
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const nav = useNavigate();
-  const [filtros, setFiltros] = useState<FiltrosUI>({ from: '', to: '', obra: '' });
+  const [filtros, setFiltros] = useState<FiltrosUI>(lerFiltros);
+  useEffect(() => {
+    try { sessionStorage.setItem(CHAVE, JSON.stringify(filtros)); } catch { /* sem storage: só não lembra */ }
+  }, [filtros]);
   const [dados, setDados] = useState<DashboardResponse | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);

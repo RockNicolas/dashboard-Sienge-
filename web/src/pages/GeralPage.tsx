@@ -1,61 +1,63 @@
 import { Bar } from 'react-chartjs-2';
 import { Barra, Card, Grafico, Kpi, Kpis } from '../components/ui';
 import { useDados } from '../hooks/useDashboard';
-import { brl, eixoBRL, meses, PALETA, pct, porMes } from '../lib/format';
+import { brl, eixoBRL, PALETA, pct, rotuloPeriodo } from '../lib/format';
 
+const Ranking = ({ itens }: { itens: { k: string; nome: string; valor: number }[] }) => (
+  itens.length ? (
+    <ul className="rank">
+      {itens.map(i => (
+        <li key={i.k}>
+          <span>{i.nome}</span><span>{brl(i.valor)}</span>
+          <Barra v={i.valor} max={itens[0]?.valor ?? 1} />
+        </li>
+      ))}
+    </ul>
+  ) : <p className="muted">Sem compras no período.</p>
+);
+
+/** Visão geral de suprimentos: compras, fornecedores, materiais e obras no período. */
 export default function GeralPage() {
   const d = useDados();
   if (!d) return null;
   const r = d.resumo;
-  const ms = meses(r.compradoMensal, r.consumidoMensal);
   const forn = d.fornecedores.slice(0, 5);
-  const insumos = d.abc.slice(0, 5);
+  const materiais = d.historico.slice(0, 5);
+  const obras = d.comprasObra.slice(0, 5);
+  const maior = d.fornecedores[0];
+
   return (
     <div className="geral">
       <Kpis>
-        <Kpi cor={PALETA[0]} titulo="Total comprado" valor={brl(r.comprado)} sub={`${r.pedidos} pedidos`} />
-        <Kpi cor={PALETA[1]} titulo="Consumido nas obras" valor={brl(r.consumido)} sub={`${pct(r.pctConsumido)} do comprado`} />
-        <Kpi cor={PALETA[2]} titulo="Saldo (comprado − consumido)" valor={brl(r.saldo)} sub="estoque / a apropriar" />
-        <Kpi cor={PALETA[6]} titulo="Fornecedores ativos" valor={r.fornecedores} sub="no período" />
-        <Kpi cor={PALETA[3]} titulo="Insumos diferentes" valor={r.insumos} sub="comprados no período" />
-        <Kpi cor={PALETA[4]} titulo="Obras com consumo" valor={r.obras} sub="com saídas de estoque" />
+        <Kpi cor={PALETA[0]} titulo="Total comprado" valor={brl(r.comprado)} sub={`${r.pedidos} pedidos de compra`} />
+        <Kpi cor={PALETA[6]} titulo="Ticket médio por pedido" valor={brl(r.ticketMedio)} sub="valor médio de cada pedido" />
+        <Kpi cor={PALETA[1]} titulo="Fornecedores" valor={r.fornecedores} sub="com pedido no período" />
+        <Kpi cor={PALETA[3]} titulo="Materiais diferentes" valor={r.insumos} sub="insumos comprados" />
+        <Kpi cor={PALETA[2]} titulo="Obras atendidas" valor={r.obrasComCompra} sub="com pedido de compra" />
+        <Kpi cor={PALETA[4]} titulo="Maior fornecedor" valor={maior ? pct(maior.participacao) : '—'} sub={maior?.fornecedor ?? 'sem compras'} />
       </Kpis>
 
-      <Card titulo="Comprado × Consumido por mês">
+      <Card titulo="Compras por mês (pedidos de compra)">
         <Grafico>
           <Bar
             data={{
-              labels: ms,
-              datasets: [
-                { label: 'Comprado', data: porMes(r.compradoMensal, ms), backgroundColor: PALETA[0] },
-                { label: 'Consumido', data: porMes(r.consumidoMensal, ms), backgroundColor: PALETA[1] },
-              ],
+              labels: r.compradoMensal.map(p => rotuloPeriodo(p.mes)),
+              datasets: [{ label: 'Comprado', data: r.compradoMensal.map(p => p.valor), backgroundColor: PALETA[0] }],
             }}
-            options={{ responsive: true, maintainAspectRatio: false, scales: { y: eixoBRL, x: { grid: { display: false } } } }}
+            options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: eixoBRL, x: { grid: { display: false } } } }}
           />
         </Grafico>
       </Card>
 
       <div className="stack">
         <Card titulo="Top 5 fornecedores">
-          <ul className="rank">
-            {forn.map(f => (
-              <li key={f.fornecedorId}>
-                <span>{f.fornecedor}</span><span>{brl(f.valor)}</span>
-                <Barra v={f.valor} max={forn[0]?.valor ?? 1} />
-              </li>
-            ))}
-          </ul>
+          <Ranking itens={forn.map(f => ({ k: f.fornecedorId, nome: f.fornecedor, valor: f.valor }))} />
         </Card>
-        <Card titulo="Top 5 insumos por valor comprado">
-          <ul className="rank">
-            {insumos.map(i => (
-              <li key={i.insumoId}>
-                <span>{i.insumo}</span><span>{brl(i.valor)}</span>
-                <Barra v={i.valor} max={insumos[0]?.valor ?? 1} />
-              </li>
-            ))}
-          </ul>
+        <Card titulo="Top 5 materiais por valor comprado">
+          <Ranking itens={materiais.map(m => ({ k: m.insumoId, nome: m.insumo, valor: m.valor }))} />
+        </Card>
+        <Card titulo="Compras por obra">
+          <Ranking itens={obras.map(o => ({ k: o.obraId || '-', nome: o.obra, valor: o.valor }))} />
         </Card>
       </div>
     </div>

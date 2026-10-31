@@ -1,4 +1,5 @@
 import { BarraFinanceiro, GraficoSeries, nomeAgrupar, TabelaParcelas } from '../components/financeiro';
+import { TabelaTitulos } from '../components/TabelaTitulos';
 import { Barra, Card, Kpi, Kpis, Tabela } from '../components/ui';
 import { useFinanceiro } from '../hooks/useFinanceiro';
 import { brl, PALETA, pct } from '../lib/format';
@@ -39,6 +40,10 @@ export default function ContasReceberPage() {
           </ul>
         </Card>
       </div>
+
+      <Card titulo="Títulos a receber">
+        <TabelaTitulos titulos={d.titulosReceber} parceiro="Cliente" />
+      </Card>
 
       <Card titulo="A receber por obra">
         <Tabela linhas={d.porObra.filter(o => o.aReceber)} colunas={[

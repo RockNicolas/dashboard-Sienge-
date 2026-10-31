@@ -11,6 +11,9 @@ import { FinanceiroModel } from '../models/FinanceiroModel';
 import { QuotaService } from './quota.service';
 import type { Dados, DadosFinanceiros } from '../types';
 
+// O financeiro usa no máximo esta parte da cota bulk-data do dia; o resto fica para os Insumos da Obra (custos por obra).
+const PARTE_BULK_FINANCEIRO = 0.5;
+
 const sincronizado = new Map<string, number>(); // "de|ate" -> timestamp
 const emAndamento = new Map<string, Promise<string | null>>(); // uma sincronização por período, sem duplicar chamadas
 const avisos = new Map<string, string | null>(); // "de|ate" -> aviso da última tentativa
@@ -40,16 +43,20 @@ export const SyncService = {
       let p = emAndamento.get(k);
       if (!p) {
         p = SiengeService.carregar(de, ate)
-          .then(({ dados, pedidos, pendentes }) => {
+          .then(({ dados, pedidos, pendentes, avisos: extras }) => {
             // grava mesmo parcial: os itens já baixados ficam guardados e a próxima sincronização completa o resto
             transacao(() => {
               DadosModel.substituirPeriodo(dados, de, ate);
               SincronizacaoModel.registrar(dados, de, ate);
             });
-            return pendentes
-              ? `Sincronização parcial: itens de ${pedidos - pendentes} de ${pedidos} pedidos baixados. `
-                + 'A cota diária da API acabou; o restante é buscado nas próximas sincronizações.'
-              : null;
+            const msgs = [
+              ...(pendentes
+                ? [`Sincronização parcial: itens de ${pedidos - pendentes} de ${pedidos} pedidos baixados. `
+                  + 'A cota diária da API acabou; o restante é buscado nas próximas sincronizações.']
+                : []),
+              ...extras,
+            ];
+            return msgs.length ? msgs.join(' ') : null;
           })
           .finally(() => { emAndamento.delete(k); });
         emAndamento.set(k, p);
@@ -69,14 +76,15 @@ export const SyncService = {
 
   /**
    * Financeiro: sincroniza a janela fixa (janelaFinanceira) e lê do SQLite o período pedido.
-   * Intervalo entre sincronizações conforme a cota bulk do plano (Free: 10/dia → a cada ~7h; planos maiores: o cache normal).
+   * Intervalo entre sincronizações conforme a parte da cota bulk do plano reservada ao financeiro
+   * (Free: 10/dia, metade para o financeiro → a cada ~14h; planos maiores: o cache normal).
    */
   async obterFinanceiro(de: string, ate: string, forcar = false): Promise<ResultadoFinanceiro> {
     if (ConfigService.mock()) return { dados: MockService.financeiro(), aviso: null, atualizado: null };
     const obras = DadosModel.obras();
     if (!ConfigService.completa()) return { dados: FinanceiroModel.ler(de, ate, obras), aviso: null, atualizado: FinanceiroModel.ultima() };
 
-    const limiteBulk = QuotaService.info().bulkLimite;
+    const limiteBulk = QuotaService.info().bulkLimite * PARTE_BULK_FINANCEIRO;
     const intervalo = Math.max(env.cacheMs, limiteBulk ? (24 * 3600_000 * BULK_POR_SYNC) / limiteBulk : 0);
     const ultima = FinanceiroModel.ultima();
     const venceu = !ultima || Date.now() - new Date(ultima).getTime() > intervalo;

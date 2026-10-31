@@ -18,6 +18,7 @@ export const DashboardController = {
 
     const body: DashboardResponse = {
       mock: ConfigService.mock(),
+      de: from, ate: to,
       aviso,
       usuario: req.usuario ?? '',
       atualizado: SincronizacaoModel.ultima()?.em ?? new Date().toISOString(),

@@ -1,17 +1,45 @@
 // Tipos de domínio e contratos da API (importados também pelo frontend, apenas como tipo).
 
+/**
+ * Item de pedido de compra do Sienge (GET /purchase-orders + /purchase-orders/{id}/items, spec purchase-orders-v1).
+ * Ao lado de cada campo, o nome original na API.
+ */
 export interface Compra {
-  data: string;
-  pedido: string;
-  fornecedorId: string;
-  fornecedor: string;
-  insumoId: string;
-  insumo: string;
-  un: string;
-  qtd: number;
-  preco: number;
-  valor: number;
+  data: string;            // date (data do pedido)
+  pedido: string;          // formattedPurchaseOrderId (parâmetro 415) ou id
+  fornecedorId: string;    // supplierId
+  fornecedor: string;      // nome do credor (/creditors/{supplierId}); o pedido não traz o nome
+  insumoId: string;        // resourceId
+  insumo: string;          // resourceDescription
+  un: string;              // unitOfMeasure
+  qtd: number;             // quantity
+  preco: number;           // netPrice (preço unitário líquido); sem ele, unitPrice
+  valor: number;           // quantity × preço líquido (a API não manda o total do item)
   prazoEntrega: number | null;
+  obraId: string;          // buildingId do pedido ('' = pedido sem obra)
+  obra: string;            // nome da obra (/enterprises)
+  item: number;            // itemNumber
+  codigo: string;          // resourceCode (código auxiliar do insumo)
+  detalhe: string;         // detailDescription
+  marca: string;           // trademarkDescription
+  precoUnitario: number;   // unitPrice (antes de desconto/acréscimo)
+  situacao: string;        // status: PENDING | PARTIALLY_DELIVERED | FULLY_DELIVERED | CANCELED
+  autorizado: boolean;     // authorized
+  atrasado: boolean;       // deliveryLate (algum item com entrega em atraso)
+  comprador: string;       // buyerId (usuário do Sienge)
+  condicaoPagamento: string; // paymentCondition
+}
+
+/** Credor do Sienge (GET /creditors, spec creditor-v1). Campos vazios quando o Sienge não mandou. */
+export interface FornecedorCadastro {
+  id: string;              // id
+  nome: string;            // name
+  fantasia: string;        // tradeName
+  cnpj: string;            // cnpj (ou cpf)
+  cidade: string;          // address.cityName (o endereço do credor não traz UF)
+  telefone: string;        // phones[] (o principal): ddd + number
+  email: string;           // contacts[].email (o primeiro)
+  ativo: boolean;          // active
 }
 
 export interface Consumo {
@@ -27,7 +55,7 @@ export interface Consumo {
 
 export interface Obra { id: string; nome: string }
 
-export interface Dados { compras: Compra[]; consumos: Consumo[]; obras: Obra[] }
+export interface Dados { compras: Compra[]; consumos: Consumo[]; obras: Obra[]; fornecedores?: FornecedorCadastro[] }
 
 export interface Filtros { from: string; to: string; obraId?: string }
 
@@ -37,6 +65,8 @@ export interface PontoMensal { mes: string; valor: number }
 export interface Resumo {
   comprado: number; consumido: number; saldo: number; pctConsumido: number;
   fornecedores: number; insumos: number; pedidos: number; obras: number;
+  obrasComCompra: number;  // obras com pedido de compra no período
+  ticketMedio: number;     // valor médio por pedido
   compradoMensal: PontoMensal[]; consumidoMensal: PontoMensal[];
 }
 
@@ -47,6 +77,34 @@ export interface ConsumoMaterial {
 export interface RankingFornecedor {
   fornecedorId: string; fornecedor: string; valor: number; participacao: number;
   pedidos: number; itens: number; prazoMedio: number | null;
+  acumulado: number;              // % acumulado no ranking (curva ABC de fornecedores)
+  classe: 'A' | 'B' | 'C';
+  ticketMedio: number;            // valor médio por pedido
+  obras: number;                  // obras atendidas
+  atrasados: number;              // pedidos com entrega em atraso (deliveryLate)
+  ultimaCompra: string;           // AAAA-MM-DD
+  topInsumos: { insumo: string; valor: number }[];
+  cadastro: FornecedorCadastro | null;   // credor no Sienge (null enquanto não foi buscado)
+}
+
+/** Histórico de compras de um material (insumo) no período. */
+export interface HistoricoMaterial {
+  insumoId: string; insumo: string; un: string;
+  compras: number;                // linhas de pedido
+  pedidos: number;
+  fornecedores: number;
+  qtd: number; valor: number;
+  precoMin: number; precoMedio: number; precoMax: number;
+  variacao: number;               // (máx − mín) / mín, em %
+  ultimoPreco: number; ultimaData: string; ultimoFornecedor: string;
+  precoMensal: PontoMensal[];     // preço médio ponderado de cada mês
+}
+
+/** Material comprado por obra (pela obra do pedido de compra). */
+export interface CompraObra {
+  obraId: string; obra: string; valor: number; participacao: number;
+  pedidos: number; fornecedores: number; insumos: number;
+  mensal: PontoMensal[]; topInsumos: { insumo: string; valor: number }[];
 }
 
 export interface ConsumoObra {
@@ -80,10 +138,15 @@ export interface DashboardData {
   abc: ItemABC[];
   compradoVsConsumido: CompradoVsConsumido[];
   variacaoPreco: VariacaoPreco[];
+  historico: HistoricoMaterial[];
+  compras: Compra[];              // linhas de compra do período, mais recentes primeiro (até LIMITE_COMPRAS)
+  comprasTotal: number;           // total de linhas no período (pode passar do que veio em `compras`)
+  comprasObra: CompraObra[];
 }
 
 export interface DashboardResponse extends DashboardData {
   mock: boolean;
+  de: string; ate: string; // período usado (sem filtro de datas: últimos 12 meses)
   aviso: string | null;    // sincronização com o Sienge falhou ou ficou parcial (cota, conexão...)
   usuario: string;
   atualizado: string;
@@ -96,25 +159,137 @@ export interface Sincronizacao {
   compras: number; consumos: number; comprado: number; consumido: number;
 }
 
+// ---------- custos por obra: Insumos da Obra (bulk-data/v1/building/resources, spec bulk-data-building-resource-v1) ----------
+// Mesma regra do "Relatório de Apropriações de Insumos" do Sienge.
+
+/** Apropriação de obra de um insumo (pendente: saldo de pedido/contrato; atendida: NF de compra/medição). */
+export interface ApropriacaoInsumo {
+  documento: string;       // documentLabel, ex.: "NF/001", "CT/0001"
+  data: string;            // date (emissão do título; para medições, data da medição)
+  edt: string;             // costEstimationItemReference (item do orçamento na EDT)
+  servico: string;         // costEstimationItemDescription
+  unidade: string;         // buildingUnitName (unidade construtiva)
+  qtd: number;             // quantity
+  pct: number;             // percentage
+  valor: number;           // value
+}
+
+/** Item do orçamento em que o insumo está (buildingCostEstimationItems). */
+export interface OrcamentoInsumo {
+  edt: string;             // wbsCode
+  servico: string;         // description
+  unidade: string;         // buildingUnitName
+  qtd: number;             // quantity (orçada)
+  valor: number;           // totalPrice (orçado, sem BDI e sem encargos)
+}
+
+export interface InsumoObra {
+  obraId: string; obra: string;                 // buildingId, buildingName
+  insumoId: string; insumo: string;             // id, description
+  codigo: string;                               // resourceCode
+  un: string;                                   // unitOfMeasure
+  categoria: string;                            // category: MATERIAL, LABOR, EQUIPMENT, OTHER…
+  grupo: string;                                // resourceGroup
+  detalhe: string; marca: string;               // detailDescription, trademarkDescription
+  precoUnitario: number;                        // unitPrice
+  orcamento: OrcamentoInsumo[];
+  pendentes: ApropriacaoInsumo[];               // buildingAppropriations.pending
+  atendidas: ApropriacaoInsumo[];               // buildingAppropriations.attended
+}
+
+/** Orçado × pendente × atendido. `saldo` = orçado − atendido − pendente (negativo = passou do orçamento). */
+export interface TotaisCusto {
+  orcado: number;
+  pendente: number;        // comprometido: saldos de pedidos e contratos
+  atendido: number;        // realizado até hoje: NFs de compra e medições
+  atendidoPeriodo: number; // realizado com data no período do filtro
+  saldo: number;
+}
+
+export interface CustoCategoria extends TotaisCusto { categoria: string; nome: string }
+export interface CustoServico extends TotaisCusto { edt: string; servico: string }
+export interface CustoInsumo extends TotaisCusto {
+  insumoId: string; insumo: string; un: string; categoria: string;
+  qtdOrcada: number; qtdPendente: number; qtdAtendida: number;
+}
+
+export interface CustoObra extends TotaisCusto {
+  obraId: string; obra: string;
+  categorias: CustoCategoria[];
+  servicos: CustoServico[];
+  insumos: CustoInsumo[];
+  atualizado: string | null;   // quando os insumos desta obra vieram do Sienge
+}
+
+export interface CustosObraResponse {
+  mock: boolean;
+  aviso: string | null;
+  obras: CustoObra[];
+  aguardando: Obra[];          // obras do filtro ainda não sincronizadas (cota bulk-data do dia)
+}
+
 // ---------- módulo financeiro (contas a pagar, a receber, caixa e bancos) ----------
 export type SituacaoParcela = 'aberta' | 'vencida' | 'quitada';
 
 /** Rateio de um lançamento (plano financeiro, centro de custo ou obra), em % do valor. */
 export interface Rateio { id: string; nome: string; pct: number }
 
+/** Linha da "Apropriação de despesas por centro de custo" do Sienge: centro de custo + plano financeiro + %. */
+export interface Apropriacao { centroCustoId: string; centroCusto: string; planoId: string; plano: string; pct: number }
+
 interface ParcelaBase {
   empresaId: string; empresa: string;
   tituloId: string; parcelaId: string;
-  documento: string;           // tipo + número, ex.: "NF 1234"
+  documento: string;           // tipo + número, ex.: "TRCT ISADORA MARQUES"
+  documentoTipo: string;       // ex.: "TRCT"
+  documentoNome: string;       // ex.: "TERMO DE RESCISÃO DO CONTRATO DE TRABALHO"
+  numeroDocumento: string;
   emissao: string;             // AAAA-MM-DD
   vencimento: string;
   competencia: string;
+  dataBase: string;            // data base da parcela
+  indexador: string;           // ex.: "REAL"
   valor: number;               // valor original da parcela
+  desconto: number;
+  impostos: number;            // impostos retidos
   saldo: number;               // em aberto
   situacao: SituacaoParcela;
+  apropriacoes: Apropriacao[];
   planos: Rateio[];            // plano financeiro (categoria)
   centrosCusto: Rateio[];
   obras: Rateio[];             // apropriação por obra (filtro e análise por obra)
+}
+
+/** Dados do título que só o REST /bills traz (o bulk de parcelas não tem). */
+export interface TituloInfo {
+  id: string;
+  observacao: string;
+  valorTotal: number;          // valor bruto do título (soma impostos e desconto)
+  desconto: number;
+  parcelas: number;
+  pedidoCompra: string;
+  contrato: string;
+  origem: string;              // ex.: "Contas a Pagar", "Folha de Pagamento"
+}
+
+/** Título (a pagar ou a receber) como no cadastro de títulos do Sienge: parcelas agrupadas + dados do título. */
+export interface Titulo {
+  tipo: 'pagar' | 'receber';
+  tituloId: string;
+  documentoTipo: string; documentoNome: string; numeroDocumento: string;
+  empresa: string; parceiroId: string; parceiro: string;   // credor (pagar) ou cliente (receber)
+  emissao: string; competencia: string;
+  valorTotal: number; desconto: number; impostos: number;
+  parcelas: number; parcelasQuitadas: number;
+  quitado: number; saldo: number;                         // pago/recebido e em aberto
+  proximoVencimento: string | null;
+  situacao: SituacaoParcela;   // quitada = todas baixadas; vencida = alguma parcela atrasada
+  autorizado: boolean;         // a pagar: todas as parcelas autorizadas (a receber: sempre true)
+  apropriacoes: Apropriacao[];
+  obras: Rateio[];
+  observacao: string; origem: string;
+  pedidoCompra: string; contrato: string;                 // a pagar
+  unidade: string; condicao: string;                      // a receber: unidade principal e condição de pagamento
 }
 
 export interface ContaPagar extends ParcelaBase {
@@ -130,6 +305,9 @@ export interface ContaReceber extends ParcelaBase {
   ultimoRecebimento: string | null;
   inadimplencia: string;       // situação de inadimplência como vem do Sienge (valores não documentados)
   unidade: string;             // unidade principal (imóvel)
+  origem: string;              // módulo de origem, ex.: "Medições"
+  condicao: string;            // condição de pagamento (TC), ex.: "PM"
+  parcelaNumero: string;       // "1", ou "1/2" conforme parâmetro 651 do Sienge
 }
 
 export interface MovimentoBancario {
@@ -167,6 +345,8 @@ export interface DadosFinanceiros {
   movimentos: MovimentoBancario[];
   contas: ContaCorrente[];
   saldos: SaldoConta[];
+  titulos: TituloInfo[];          // a pagar (/bills)
+  titulosReceber: TituloInfo[];   // a receber (/accounts-receivable/receivable-bills, por cliente)
   obras: Obra[];
 }
 
@@ -192,9 +372,15 @@ export interface ResumoFinanceiro {
 
 export interface FinanceiroObra {
   obraId: string; obra: string;
-  aPagar: number; pagarAberto: number; pagarVencido: number;
-  aReceber: number; receberAberto: number; receberVencido: number;
+  aPagar: number; pagarAberto: number; pagarVencido: number; pago: number;
+  aReceber: number; receberAberto: number; receberVencido: number; recebido: number;
   entradas: number; saidas: number; resultado: number;   // entradas − saídas
+}
+
+/** Despesas (contas a pagar) de uma obra abertas pelo plano financeiro: material, mão de obra, serviços… */
+export interface DespesaObra {
+  obraId: string; obra: string; total: number;
+  planos: { plano: string; valor: number }[];             // maior primeiro
 }
 
 export interface TotalParceiro { nome: string; total: number; aberto: number; vencido: number; parcelas: number }
@@ -212,6 +398,7 @@ export interface FinanceiroData {
   resumo: ResumoFinanceiro;
   serie: PontoFinanceiro[];
   porObra: FinanceiroObra[];
+  despesasObra: DespesaObra[];
   credores: TotalParceiro[];
   clientes: TotalParceiro[];
   planos: TotalPlano[];
@@ -219,6 +406,8 @@ export interface FinanceiroData {
   proximos: ParcelaResumo[];             // vencimentos dos próximos 30 dias
   saldos: SaldoContaDetalhe[];
   movimentos: MovimentoBancario[];       // últimos movimentos do período
+  titulosPagar: Titulo[];                // títulos com parcela vencendo no período (mais recentes primeiro)
+  titulosReceber: Titulo[];
 }
 
 export interface FinanceiroResponse extends FinanceiroData {

@@ -1,8 +1,8 @@
 // Cálculos do módulo financeiro — funções puras sobre os dados normalizados.
 // Filtro de obra: cada lançamento entra proporcional ao rateio da obra (ex.: título 60% obra A / 40% obra B).
 import type {
-  Agrupamento, ContaPagar, ContaReceber, DadosFinanceiros, FinanceiroData, FinanceiroObra, FiltrosFinanceiro,
-  MovimentoBancario, ParcelaResumo, PontoFinanceiro, Rateio, TotalParceiro, TotalPlano,
+  Agrupamento, ContaPagar, ContaReceber, DadosFinanceiros, DespesaObra, FinanceiroData, FinanceiroObra, FiltrosFinanceiro,
+  MovimentoBancario, ParcelaResumo, PontoFinanceiro, Rateio, Titulo, TituloInfo, TotalParceiro, TotalPlano,
 } from '../types';
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -89,6 +89,53 @@ function resumoParcela(tipo: ParcelaResumo['tipo'], p: ContaPagar | ContaReceber
   };
 }
 
+/**
+ * Títulos (como no cadastro de títulos do Sienge): agrupa as parcelas pelo título.
+ * Entram os títulos com alguma parcela vencendo no período; totais consideram todas as parcelas sincronizadas do título
+ * e, quando o REST do título foi sincronizado, valor total, nº de parcelas e observação vêm dele.
+ */
+export function agruparTitulos<T extends ContaPagar | ContaReceber>(
+  todas: T[], noPeriodo: Set<string>, infos: Map<string, TituloInfo>, hoje: string,
+): Titulo[] {
+  const grupos = new Map<string, T[]>();
+  for (const p of todas) if (noPeriodo.has(p.tituloId)) {
+    const g = grupos.get(p.tituloId);
+    if (g) g.push(p); else grupos.set(p.tituloId, [p]);
+  }
+  return [...grupos].map(([tituloId, ps]): Titulo => {
+    const p0 = ps[0];
+    const info = infos.get(tituloId);
+    const pagar = 'credor' in p0;
+    const saldo = ps.reduce((s, p) => s + p.saldo, 0);
+    const abertas = ps.filter(p => p.saldo > 0.005).map(p => p.vencimento).sort();
+    const quitado = ps.reduce((s, p) => s + ('pago' in p ? p.pago : p.recebido), 0);
+    // "1/3" (parâmetro 651 do Sienge) já diz o total de parcelas do título
+    const totalPorNumero = Math.max(0, ...ps.map(p => ('parcelaNumero' in p ? Number(p.parcelaNumero.split('/')[1]) || 0 : 0)));
+    return {
+      tipo: pagar ? 'pagar' : 'receber',
+      tituloId,
+      documentoTipo: p0.documentoTipo, documentoNome: p0.documentoNome, numeroDocumento: p0.numeroDocumento,
+      empresa: p0.empresa,
+      parceiroId: 'credor' in p0 ? p0.credorId : p0.clienteId, parceiro: 'credor' in p0 ? p0.credor : p0.cliente,
+      emissao: p0.emissao, competencia: p0.competencia,
+      valorTotal: r2(info?.valorTotal || ps.reduce((s, p) => s + p.valor, 0)),
+      desconto: r2(info?.desconto || ps.reduce((s, p) => s + p.desconto, 0)),
+      impostos: r2(ps.reduce((s, p) => s + p.impostos, 0)),
+      parcelas: info?.parcelas || totalPorNumero || ps.length,
+      parcelasQuitadas: ps.filter(p => p.saldo <= 0.005).length,
+      quitado: r2(quitado), saldo: r2(saldo),
+      proximoVencimento: abertas[0] ?? null,
+      situacao: saldo <= 0.005 ? 'quitada' : abertas.some(v => v < hoje) ? 'vencida' : 'aberta',
+      autorizado: ps.every(p => !('autorizada' in p) || p.autorizada),
+      apropriacoes: p0.apropriacoes, obras: p0.obras,
+      observacao: info?.observacao ?? '',
+      origem: info?.origem || ('origem' in p0 ? p0.origem : ''),
+      pedidoCompra: info?.pedidoCompra ?? '', contrato: info?.contrato ?? '',
+      unidade: 'unidade' in p0 ? p0.unidade : '', condicao: 'condicao' in p0 ? p0.condicao : '',
+    };
+  }).sort((a, b) => b.emissao.localeCompare(a.emissao) || Number(b.tituloId) - Number(a.tituloId));
+}
+
 export const FinanceiroAnalytics = {
   dashboard(d: DadosFinanceiros, { from, to, obraId, agrupar }: FiltrosFinanceiro, hoje = iso(new Date())): FinanceiroData {
     const noPeriodo = (data: string) => data >= from && data <= to;
@@ -131,19 +178,29 @@ export const FinanceiroAnalytics = {
     const linha = (o: { id: string; nome: string }) => {
       let l = obras.get(o.id);
       if (!l) obras.set(o.id, l = {
-        obraId: o.id, obra: o.nome, aPagar: 0, pagarAberto: 0, pagarVencido: 0,
-        aReceber: 0, receberAberto: 0, receberVencido: 0, entradas: 0, saidas: 0, resultado: 0,
+        obraId: o.id, obra: o.nome, aPagar: 0, pagarAberto: 0, pagarVencido: 0, pago: 0,
+        aReceber: 0, receberAberto: 0, receberVencido: 0, recebido: 0, entradas: 0, saidas: 0, resultado: 0,
       });
       return l;
     };
+    // despesas por obra abertas pelo plano financeiro (rateio da obra × rateio do plano)
+    const despesas = new Map<string, { obra: string; planos: Map<string, number> }>();
     for (const p of pagar) for (const o of partes(p.obras)) {
       const l = linha(o);
-      l.aPagar += p.valor * o.f; l.pagarAberto += p.saldo * o.f;
+      l.aPagar += p.valor * o.f; l.pagarAberto += p.saldo * o.f; l.pago += p.pago * o.f;
       if (vencida(p, hoje)) l.pagarVencido += p.saldo * o.f;
+      const d = despesas.get(o.id) ?? { obra: o.nome, planos: new Map<string, number>() };
+      const ps = p.planos.length ? p.planos : [{ id: '', nome: 'Sem plano financeiro', pct: 100 }];
+      const totalPct = ps.reduce((s, x) => s + x.pct, 0);
+      for (const pl of ps) {
+        const nome = pl.nome || pl.id;
+        d.planos.set(nome, (d.planos.get(nome) ?? 0) + p.valor * o.f * (totalPct > 0 ? pl.pct / totalPct : 1 / ps.length));
+      }
+      despesas.set(o.id, d);
     }
     for (const p of receber) for (const o of partes(p.obras)) {
       const l = linha(o);
-      l.aReceber += p.valor * o.f; l.receberAberto += p.saldo * o.f;
+      l.aReceber += p.valor * o.f; l.receberAberto += p.saldo * o.f; l.recebido += p.recebido * o.f;
       if (vencida(p, hoje)) l.receberVencido += p.saldo * o.f;
     }
     for (const m of movs) for (const o of partes(m.obras)) {
@@ -153,11 +210,18 @@ export const FinanceiroAnalytics = {
     const porObra = [...obras.values()]
       .filter(l => !obraId || l.obraId === obraId)
       .map(l => ({
-        ...l, aPagar: r2(l.aPagar), pagarAberto: r2(l.pagarAberto), pagarVencido: r2(l.pagarVencido),
-        aReceber: r2(l.aReceber), receberAberto: r2(l.receberAberto), receberVencido: r2(l.receberVencido),
+        ...l, aPagar: r2(l.aPagar), pagarAberto: r2(l.pagarAberto), pagarVencido: r2(l.pagarVencido), pago: r2(l.pago),
+        aReceber: r2(l.aReceber), receberAberto: r2(l.receberAberto), receberVencido: r2(l.receberVencido), recebido: r2(l.recebido),
         entradas: r2(l.entradas), saidas: r2(l.saidas), resultado: r2(l.entradas - l.saidas),
       }))
       .sort((a, b) => b.aPagar + b.aReceber - (a.aPagar + a.aReceber));
+    const despesasObra: DespesaObra[] = [...despesas]
+      .filter(([id]) => !obraId || id === obraId)
+      .map(([id, d]) => {
+        const planosObra = [...d.planos].map(([plano, valor]) => ({ plano, valor: r2(valor) })).sort((a, b) => b.valor - a.valor);
+        return { obraId: id, obra: d.obra, total: r2(planosObra.reduce((s, x) => s + x.valor, 0)), planos: planosObra };
+      })
+      .sort((a, b) => b.total - a.total);
 
     // parcelas em destaque: vencidas (do período) e próximos 30 dias (independe do período)
     const em30 = iso(new Date(Date.parse(hoje + 'T00:00:00Z') + 30 * 864e5));
@@ -190,6 +254,7 @@ export const FinanceiroAnalytics = {
       },
       serie: pontos,
       porObra,
+      despesasObra,
       credores: parceiros(pagar, p => p.credor, obraId, hoje),
       clientes: parceiros(receber, p => p.cliente, obraId, hoje),
       planos: planos(movs, obraId),
@@ -197,6 +262,10 @@ export const FinanceiroAnalytics = {
       proximos,
       saldos,
       movimentos: [...movs].sort((a, b) => b.data.localeCompare(a.data)).slice(0, 30),
+      titulosPagar: agruparTitulos(d.pagar.filter(daObra), new Set(pagar.map(p => p.tituloId)),
+        new Map(d.titulos.map(t => [t.id, t])), hoje).slice(0, 300),
+      titulosReceber: agruparTitulos(d.receber.filter(daObra), new Set(receber.map(p => p.tituloId)),
+        new Map(d.titulosReceber.map(t => [t.id, t])), hoje).slice(0, 300),
     };
   },
 };

@@ -15,8 +15,11 @@ export default function FinanceiroPage() {
   const total = d.porObra.reduce<FinanceiroObra>((t, o) => ({
     ...t, aPagar: t.aPagar + o.aPagar, pagarVencido: t.pagarVencido + o.pagarVencido, aReceber: t.aReceber + o.aReceber,
     receberVencido: t.receberVencido + o.receberVencido, entradas: t.entradas + o.entradas, saidas: t.saidas + o.saidas,
-    resultado: t.resultado + o.resultado,
-  }), { obraId: '*', obra: 'Total', aPagar: 0, pagarAberto: 0, pagarVencido: 0, aReceber: 0, receberAberto: 0, receberVencido: 0, entradas: 0, saidas: 0, resultado: 0 });
+    resultado: t.resultado + o.resultado, pago: t.pago + o.pago, recebido: t.recebido + o.recebido,
+  }), {
+    obraId: '*', obra: 'Total', aPagar: 0, pagarAberto: 0, pagarVencido: 0, pago: 0,
+    aReceber: 0, receberAberto: 0, receberVencido: 0, recebido: 0, entradas: 0, saidas: 0, resultado: 0,
+  });
 
   return (
     <>

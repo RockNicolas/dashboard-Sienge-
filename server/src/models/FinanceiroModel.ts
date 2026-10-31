@@ -1,9 +1,11 @@
 // Dados financeiros sincronizados do Sienge. Parcelas e movimentos ficam como JSON normalizado, indexados pela data
 // (vencimento da parcela / data do movimento); contas correntes e saldos são uma "foto" da última sincronização.
 import { db, transacao } from './db';
-import type { ContaCorrente, ContaPagar, ContaReceber, DadosFinanceiros, MovimentoBancario, Obra, SaldoConta } from '../types';
+import type {
+  ContaCorrente, ContaPagar, ContaReceber, DadosFinanceiros, MovimentoBancario, Obra, SaldoConta, TituloInfo,
+} from '../types';
 
-type Tipo = 'pagar' | 'receber' | 'movimento';
+type Tipo = 'pagar' | 'receber' | 'movimento' | 'titulo' | 'titulo-receber';
 
 function substituir<T>(tipo: Tipo, rows: T[], de: string, ate: string, chave: (r: T) => string, data: (r: T) => string): void {
   db.prepare('DELETE FROM fin_registros WHERE tipo = ? AND data >= ? AND data <= ?').run(tipo, de, ate);
@@ -14,6 +16,10 @@ function substituir<T>(tipo: Tipo, rows: T[], de: string, ate: string, chave: (r
 function ler<T>(tipo: Tipo, de: string, ate: string): T[] {
   return (db.prepare('SELECT json FROM fin_registros WHERE tipo = ? AND data >= ? AND data <= ?').all(tipo, de, ate) as { json: string }[])
     .map(r => JSON.parse(r.json) as T);
+}
+
+function todos<T>(tipo: Tipo): T[] {
+  return (db.prepare('SELECT json FROM fin_registros WHERE tipo = ?').all(tipo) as { json: string }[]).map(r => JSON.parse(r.json) as T);
 }
 
 function foto<T>(tipo: string): T[] {
@@ -33,6 +39,10 @@ export const FinanceiroModel = {
       if (d.pagar) substituir('pagar', d.pagar, j.vencDe, j.vencAte, r => `${r.tituloId}/${r.parcelaId}`, r => r.vencimento);
       if (d.receber) substituir('receber', d.receber, j.vencDe, j.vencAte, r => `${r.tituloId}/${r.parcelaId}`, r => r.vencimento);
       if (d.movimentos) substituir('movimento', d.movimentos, j.movDe, j.movAte, r => r.id, r => r.data);
+      // títulos só complementam as parcelas (observação, valor total...): atualiza sem apagar os antigos
+      const ins = db.prepare('INSERT OR REPLACE INTO fin_registros VALUES (?,?,NULL,?)');
+      d.titulos?.forEach(t => ins.run('titulo', t.id, JSON.stringify(t)));
+      d.titulosReceber?.forEach(t => ins.run('titulo-receber', t.id, JSON.stringify(t)));
       const em = new Date().toISOString();
       const snap = db.prepare('INSERT OR REPLACE INTO fin_snapshot VALUES (?,?,?)');
       if (d.contas) snap.run('contas', JSON.stringify(d.contas), em);
@@ -48,6 +58,8 @@ export const FinanceiroModel = {
       movimentos: ler<MovimentoBancario>('movimento', de, ate),
       contas: foto<ContaCorrente>('contas'),
       saldos: foto<SaldoConta>('saldos'),
+      titulos: todos<TituloInfo>('titulo'),
+      titulosReceber: todos<TituloInfo>('titulo-receber'),
       obras,
     };
   },

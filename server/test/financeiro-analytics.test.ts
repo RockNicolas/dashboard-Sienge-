@@ -7,14 +7,16 @@ const HOJE = '2026-10-25';
 const A: Rateio = { id: 'A', nome: 'Obra A', pct: 100 };
 
 const pagar = (o: Partial<ContaPagar>): ContaPagar => ({
-  empresaId: '1', empresa: 'E', tituloId: '1', parcelaId: '1', documento: 'NF 1', emissao: '', vencimento: '2026-10-05', competencia: '',
-  valor: 1000, saldo: 0, situacao: 'quitada', planos: [], centrosCusto: [], obras: [A],
+  empresaId: '1', empresa: 'E', tituloId: '1', parcelaId: '1', documento: 'NF 1', documentoTipo: 'NF', documentoNome: 'NOTA FISCAL', numeroDocumento: '1',
+  emissao: '2026-09-01', vencimento: '2026-10-05', competencia: '', dataBase: '', indexador: 'REAL',
+  valor: 1000, desconto: 0, impostos: 0, saldo: 0, situacao: 'quitada', apropriacoes: [], planos: [], centrosCusto: [], obras: [A],
   credorId: 'c', credor: 'Cimento SA', pago: 1000, ultimoPagamento: '2026-10-05', autorizada: true, ...o,
 });
 const receber = (o: Partial<ContaReceber>): ContaReceber => ({
-  empresaId: '1', empresa: 'E', tituloId: '9', parcelaId: '1', documento: 'CT 9', emissao: '', vencimento: '2026-10-12', competencia: '',
-  valor: 3000, saldo: 0, situacao: 'quitada', planos: [], centrosCusto: [], obras: [A],
-  clienteId: 'm', cliente: 'Maria', recebido: 3000, ultimoRecebimento: '2026-10-12', inadimplencia: 'N', unidade: 'Apto 1', ...o,
+  empresaId: '1', empresa: 'E', tituloId: '9', parcelaId: '1', documento: 'CT 9', documentoTipo: 'CT', documentoNome: '', numeroDocumento: '9',
+  emissao: '', vencimento: '2026-10-12', competencia: '', dataBase: '', indexador: '',
+  valor: 3000, desconto: 0, impostos: 0, saldo: 0, situacao: 'quitada', apropriacoes: [], planos: [], centrosCusto: [], obras: [A],
+  clienteId: 'm', cliente: 'Maria', recebido: 3000, ultimoRecebimento: '2026-10-12', inadimplencia: 'N', unidade: 'Apto 1', origem: '', condicao: '', parcelaNumero: '1', ...o,
 });
 const mov = (o: Partial<MovimentoBancario>): MovimentoBancario => ({
   id: '1', data: '2026-10-05', empresaId: '1', empresa: 'E', conta: '1', valor: -1000, operacao: '', historico: '',
@@ -31,6 +33,8 @@ const dados: DadosFinanceiros = {
   movimentos: [mov({}), mov({ id: '2', data: '2026-10-13', valor: 3000, planos: [{ id: '1.01', nome: 'Vendas', pct: 100 }] })],
   contas: [{ conta: '1', nome: 'Itaú', banco: 'Itaú', agencia: '', tipo: '', empresaId: '1', empresa: 'E', ativa: true }],
   saldos: [{ conta: '1', empresaId: '1', data: HOJE, saldo: 50_000, conciliado: 50_000 }],
+  titulos: [],
+  titulosReceber: [],
   obras: [],
 };
 
@@ -87,4 +91,23 @@ test('por obra distribui o rateio entre as obras', () => {
   assert.equal(a.resultado, 2000);
   assert.equal(d.serie[0].periodo, '2026-09-28');
   assert.equal(d.planos[0].plano, 'Vendas');
+  assert.deepEqual([a.pago, a.recebido, b.pago, b.recebido], [1000, 3000, 0, 0]);
+});
+
+test('despesas por obra abertas pelo plano financeiro, com o rateio da obra', () => {
+  const comPlanos: DadosFinanceiros = {
+    ...dados,
+    pagar: [
+      pagar({ valor: 1000, planos: [{ id: '2.01', nome: 'Materiais', pct: 70 }, { id: '2.02', nome: 'Mão de obra', pct: 30 }] }),
+      pagar({ tituloId: '2', valor: 500, planos: [{ id: '2.01', nome: 'Materiais', pct: 100 }],
+        obras: [{ id: 'A', nome: 'Obra A', pct: 60 }, { id: 'B', nome: 'Obra B', pct: 40 }] }),
+    ],
+  };
+  const d = FinanceiroAnalytics.dashboard(comPlanos, { from: '2026-10-01', to: '2026-11-30', agrupar: 'mes' }, HOJE);
+  assert.deepEqual(d.despesasObra.map(o => [o.obraId, o.total, o.planos.map(p => [p.plano, p.valor])]), [
+    ['A', 1300, [['Materiais', 1000], ['Mão de obra', 300]]],   // 700 + 60% de 500
+    ['B', 200, [['Materiais', 200]]],
+  ]);
+  const soB = FinanceiroAnalytics.dashboard(comPlanos, { from: '2026-10-01', to: '2026-11-30', obraId: 'B', agrupar: 'mes' }, HOJE);
+  assert.deepEqual(soB.despesasObra.map(o => o.obraId), ['B']);
 });

@@ -1,8 +1,10 @@
 import express, { Router } from 'express';
 import { AuthController } from '../controllers/AuthController';
 import { ConfigController } from '../controllers/ConfigController';
+import { CustosObraController } from '../controllers/CustosObraController';
 import { ImportacaoController } from '../controllers/ImportacaoController';
 import { DashboardController } from '../controllers/DashboardController';
+import { ExportarController } from '../controllers/ExportarController';
 import { FinanceiroController } from '../controllers/FinanceiroController';
 import { asyncHandler, requireAuth } from '../middlewares/auth';
 
@@ -17,6 +19,8 @@ routes.get('/me', requireAuth, AuthController.me);
 routes.get('/dashboard', requireAuth, asyncHandler(DashboardController.dashboard));
 routes.get('/historico', requireAuth, DashboardController.historico);
 routes.get('/financeiro', requireAuth, asyncHandler(FinanceiroController.dashboard));
+routes.get('/custos-obra', requireAuth, asyncHandler(CustosObraController.custos));
+routes.get('/exportar/excel', requireAuth, asyncHandler(ExportarController.excel));
 routes.get('/config', requireAuth, ConfigController.obter);
 routes.put('/config', requireAuth, ConfigController.salvar);
 routes.post('/config/testar', requireAuth, asyncHandler(ConfigController.testar));

@@ -1,10 +1,12 @@
 // Cliente da API pública do Sienge (Basic Auth: usuário de API + senha).
 // Base: https://api.sienge.com.br/{SUBDOMINIO}/public/api/v1
 //
-// ATENÇÃO: os nomes de campos seguem a documentação pública, mas variam por módulo/versão do tenant.
-// Se algum campo vier com outro nome, ajuste apenas as funções `normalizar*` abaixo.
-import type { Compra, Consumo, Dados, TesteConexao } from '../types';
+// Campos conforme as especificações oficiais (https://api.sienge.com.br/docs/yaml-files/*.yaml):
+//   purchase-orders-v1 (/purchase-orders e /items), creditor-v1 (/creditors), enterprise-v1 (/enterprises).
+// Se algum campo vier diferente no seu tenant, ajuste só as funções `normalizar*` abaixo.
+import type { Compra, Consumo, Dados, FornecedorCadastro, TesteConexao } from '../types';
 import { ConfigService, type SiengeCfg } from './config.service';
+import { FornecedorModel } from '../models/FornecedorModel';
 import { PedidoItensModel } from '../models/PedidoItensModel';
 import { QuotaService } from './quota.service';
 
@@ -64,23 +66,123 @@ async function paralelo<T, R>(itens: T[], n: number, fn: (i: T) => Promise<R>): 
 
 const num = (v: unknown) => (v == null ? 0 : Number(v));
 const dia = (v: unknown) => String(v ?? '').slice(0, 10);
+const txt = (v: unknown) => (v == null ? '' : String(v).trim());
+const lista = (v: unknown): Raw[] => (Array.isArray(v) ? v : []);
+const r2 = (n: number) => Math.round(n * 100) / 100;
 
-function normalizarItemCompra(pedido: Raw, it: Raw): Compra {
+/** Pedido que conta como compra: fora os cancelados (status CANCELED) e os reprovados (disapproved). */
+export const pedidoValido = (p: Raw) => p.status !== 'CANCELED' && p.disapproved !== true;
+
+/**
+ * Item do pedido de compra (spec purchase-orders-v1: PurchaseOrder + PurchaseOrderItem) → linha de compra.
+ * O pedido não traz o nome do fornecedor nem o total do item: o nome vem de /creditors e o valor é quantidade × preço líquido.
+ */
+export function normalizarItemCompra(pedido: Raw, it: Raw, obras: Map<string, string> = new Map()): Compra {
   const qtd = num(it.quantity);
-  const preco = num(it.unitPrice);
-  const fornecedorId = pedido.supplierId ?? pedido.creditorId;
-  const insumoId = it.resourceId ?? it.productId;
+  const precoUnitario = num(it.unitPrice);
+  const preco = num(it.netPrice) || precoUnitario;
+  const fornecedorId = txt(pedido.supplierId);
+  const obraId = txt(pedido.buildingId);
+  const insumoId = txt(it.resourceId);
   return {
-    pedido: String(pedido.id),
-    data: dia(pedido.date ?? pedido.issueDate),
-    fornecedorId: String(fornecedorId),
-    fornecedor: pedido.supplierName ?? pedido.creditorName ?? `Fornecedor ${fornecedorId}`,
-    insumoId: String(insumoId),
-    insumo: it.resourceDescription ?? it.productDescription ?? it.description ?? `Insumo ${insumoId}`,
-    un: it.unitOfMeasure ?? it.unit ?? '',
-    qtd, preco, valor: num(it.totalPrice) || qtd * preco,
+    data: dia(pedido.date),
+    pedido: txt(pedido.formattedPurchaseOrderId) || txt(pedido.id),
+    fornecedorId,
+    fornecedor: fornecedorId ? `Fornecedor ${fornecedorId}` : 'Sem fornecedor',
+    insumoId,
+    insumo: txt(it.resourceDescription) || `Insumo ${insumoId}`,
+    un: txt(it.unitOfMeasure),
+    qtd, preco, valor: r2(qtd * preco),
     prazoEntrega: null,
+    obraId,
+    obra: obraId ? obras.get(obraId) ?? `Obra ${obraId}` : '',
+    item: num(it.itemNumber),
+    codigo: txt(it.resourceCode),
+    detalhe: txt(it.detailDescription),
+    marca: txt(it.trademarkDescription),
+    precoUnitario,
+    situacao: txt(pedido.status),
+    autorizado: pedido.authorized !== false,
+    atrasado: pedido.deliveryLate === true,
+    comprador: txt(pedido.buyerId),
+    condicaoPagamento: txt(pedido.paymentCondition),
   };
+}
+
+/** Credor do Sienge (spec creditor-v1: Creditor) → cadastro do fornecedor. */
+export function normalizarCredor(c: Raw, id = txt(c.id)): FornecedorCadastro {
+  const fones = lista(c.phones);
+  const fone = fones.find(f => f.main === true) ?? fones[0];
+  return {
+    id,
+    nome: txt(c.name),
+    fantasia: txt(c.tradeName),
+    cnpj: txt(c.cnpj) || txt(c.cpf),
+    cidade: txt(c.address?.cityName),
+    telefone: fone ? [txt(fone.ddd) && `(${txt(fone.ddd)})`, txt(fone.number)].filter(Boolean).join(' ') : '',
+    email: txt(lista(c.contacts).find(x => txt(x.email))?.email),
+    ativo: c.active !== false,
+  };
+}
+
+const AVISO_SEM_CREDORES =
+  'O usuário de API não tem acesso ao cadastro de credores do Sienge (/creditors): os fornecedores aparecem pelo código.';
+
+/**
+ * Busca o cadastro (credor) dos fornecedores que ainda não estão salvos, gastando no máximo `orcamento` requisições.
+ * A 1ª página de /creditors diz quantos credores existem: se a lista inteira custar menos que buscar um a um, baixa a lista;
+ * senão busca /creditors/{id} dos fornecedores com mais pedidos primeiro. O que veio fica salvo (não gasta cota de novo).
+ */
+async function buscarFornecedores(cfg: SiengeCfg, pedidos: Raw[], orcamento: number): Promise<string | null> {
+  const conhecidos = FornecedorModel.conhecidos();
+  const contagem = new Map<string, number>();
+  for (const p of pedidos) {
+    const id = txt(p.supplierId);
+    if (id && !conhecidos.has(id)) contagem.set(id, (contagem.get(id) ?? 0) + 1);
+  }
+  let faltando = [...contagem].sort((a, b) => b[1] - a[1]).map(([id]) => id);
+  if (!faltando.length || orcamento < 1) return null;
+
+  const erro = (e: unknown) => (e as Error).message;
+  try {
+    const p1 = await get(cfg, '/creditors', { limit: PAGE, offset: 0 });
+    const vieram = new Set<string>();
+    const guardar = (rows: Raw[]) => {
+      FornecedorModel.salvar(rows.map(c => normalizarCredor(c)));
+      rows.forEach(c => vieram.add(txt(c.id)));
+    };
+    guardar(lista(p1.results));
+    const total = num(p1.resultSetMetadata?.count);
+    faltando = faltando.filter(id => !vieram.has(id));
+    const paginas = Math.ceil(total / PAGE) - 1;
+    orcamento -= 1;
+    if (paginas <= Math.min(faltando.length, orcamento)) {
+      for (let offset = PAGE; offset < total; offset += PAGE) {
+        const rows = lista((await get(cfg, '/creditors', { limit: PAGE, offset })).results);
+        guardar(rows);
+        if (!rows.length) break;
+      }
+      faltando.filter(id => !vieram.has(id)).forEach(id => FornecedorModel.marcarAusente(id));
+      return null;
+    }
+  } catch (e) {
+    if (/Sienge (401|403) /.test(erro(e))) return AVISO_SEM_CREDORES;
+    if (/Cota diária/.test(erro(e))) return null;
+    console.warn('[sienge] lista de credores:', erro(e));
+  }
+
+  let semAcesso = false;
+  await paralelo(faltando.slice(0, Math.max(0, orcamento)), 5, async id => {
+    if (semAcesso) return;
+    try {
+      FornecedorModel.salvar([normalizarCredor(await get(cfg, `/creditors/${encodeURIComponent(id)}`), id)]);
+    } catch (e) {
+      if (/Sienge 404 /.test(erro(e))) FornecedorModel.marcarAusente(id);
+      else if (/Sienge (401|403) /.test(erro(e))) semAcesso = true;
+      else if (!/Cota diária/.test(erro(e))) console.warn(`[sienge] credor ${id}:`, erro(e));
+    }
+  });
+  return semAcesso ? AVISO_SEM_CREDORES : null;
 }
 
 function normalizarConsumo(m: Raw, obras: Map<string, string>): Consumo {
@@ -102,6 +204,7 @@ export interface Carga {
   dados: Dados;
   pedidos: number;     // pedidos no período
   pendentes: number;   // pedidos cujos itens ainda não foram baixados (cota do dia acabou)
+  avisos: string[];    // problemas que não impedem a sincronização (ex.: sem acesso ao cadastro de credores)
 }
 
 export const SiengeService = {
@@ -122,19 +225,26 @@ export const SiengeService = {
     });
     const obras = new Map(empresas.map(e => [String(e.id), String(e.name ?? e.commercialName)]));
 
-    const pedidos = await listarTudo(cfg, '/purchase-orders', { startDate: from, endDate: to });
+    // cancelados e reprovados não contam como compra (e nem gastam requisição com os itens)
+    const pedidos = (await listarTudo(cfg, '/purchase-orders', { startDate: from, endDate: to })).filter(pedidoValido);
 
-    const movs = await listarTudo(cfg, cfg.endpointConsumo, { startDate: from, endDate: to }).catch(e => {
-      if (/Cota diária/.test((e as Error).message)) throw e;
-      console.warn('[sienge] consumo indisponível:', (e as Error).message);
-      return [] as Raw[];
-    });
+    // Consumo (telas de consumo ocultas por enquanto). O endpoint padrão /stock-movements não existe na API pública
+    // do Sienge (veja a lista em https://api.sienge.com.br/docs/), então a chamada fica desligada para não gastar cota.
+    // const movs = await listarTudo(cfg, cfg.endpointConsumo, { startDate: from, endDate: to }).catch(e => {
+    //   if (/Cota diária/.test((e as Error).message)) throw e;
+    //   console.warn('[sienge] consumo indisponível:', (e as Error).message);
+    //   return [] as Raw[];
+    // });
+    const movs: Raw[] = [];
     const consumos = movs.map(m => normalizarConsumo(m, obras));
+
+    // nomes dos fornecedores: no máximo metade do que sobrou da cota, para os itens dos pedidos também andarem
+    const avisoFornecedores = await buscarFornecedores(cfg, pedidos, Math.ceil(QuotaService.disponivel() / 2));
 
     const itens = PedidoItensModel.obter(pedidos.map(p => String(p.id)));
     const faltando = pedidos
       .filter(p => !itens.has(String(p.id)))
-      .sort((a, b) => dia(b.date ?? b.issueDate).localeCompare(dia(a.date ?? a.issueDate)));
+      .sort((a, b) => dia(b.date).localeCompare(dia(a.date)));
     await paralelo(faltando.slice(0, QuotaService.disponivel()), 5, async p => {
       try {
         const it = await listarTudo(cfg, `/purchase-orders/${p.id}/items`);
@@ -144,12 +254,13 @@ export const SiengeService = {
         if (!/Cota diária/.test((e as Error).message)) console.warn(`[sienge] itens do pedido ${p.id}:`, (e as Error).message);
       }
     });
-    const compras = pedidos.flatMap(p => (itens.get(String(p.id)) ?? []).map(it => normalizarItemCompra(p, it)));
+    const compras = pedidos.flatMap(p => (itens.get(String(p.id)) ?? []).map(it => normalizarItemCompra(p, it, obras)));
 
     return {
       dados: { compras, consumos, obras: [...obras].map(([id, nome]) => ({ id, nome })) },
       pedidos: pedidos.length,
       pendentes: pedidos.filter(p => !itens.has(String(p.id))).length,
+      avisos: avisoFornecedores ? [avisoFornecedores] : [],
     };
   },
 

@@ -1,18 +1,21 @@
 // Módulo financeiro do Sienge: contas a pagar, contas a receber, caixa e bancos.
 // Campos conforme as especificações oficiais (https://api.sienge.com.br/docs/yaml-files/*.yaml):
-//   bulk-data-outcome-v1, bulk-data-income-v1, bulk-data-bank-movement-v1, checking-accounts-v1, accounts-balances-v1.
+//   bulk-data-outcome-v1, bulk-data-income-v1, bulk-data-bank-movement-v1, checking-accounts-v1, accounts-balances-v1,
+//   bill-debt-v1 (/bills: dados do título que o bulk de parcelas não traz).
 // Os bulk-data trazem o período inteiro em 1 requisição (cota BULK separada da REST: 10/dia no plano Free).
 // Se algum campo vier diferente no seu tenant, ajuste só as funções `normalizar*`.
 import type {
-  ContaCorrente, ContaPagar, ContaReceber, DadosFinanceiros, MovimentoBancario, Rateio, SaldoConta, SituacaoParcela,
+  Apropriacao, ContaCorrente, ContaPagar, ContaReceber, DadosFinanceiros, MovimentoBancario, Rateio, SaldoConta, SituacaoParcela,
+  TituloInfo,
 } from '../types';
 import { ConfigService, type SiengeCfg } from './config.service';
+import { QuotaService } from './quota.service';
 import { bulkUrl, get, listarTudo } from './sienge.service';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Raw = Record<string, any>;
 
-// Indexador de correção exigido pelo /outcome. 0 = sem correção (confirmar no tenant; o código vem do cadastro de indexadores).
+// Indexador de correção exigido pelo /outcome. 0 = "REAL" (sem correção), como aparece nas parcelas do Sienge.
 const INDEXADOR_SEM_CORRECAO = 0;
 
 const num = (v: unknown) => (v == null ? 0 : Number(v));
@@ -38,6 +41,13 @@ const centrosCusto = (categorias: Raw[]) => rateio(categorias, 'costCenterId', '
 // Obra: usa a apropriação por obra quando o Sienge manda; senão o centro de custo (no Sienge cada obra costuma ter o seu).
 const obrasOuCentros = (obras: Rateio[], categorias: Raw[]) => (obras.length ? obras : centrosCusto(categorias));
 
+// cada linha de categoria do Sienge já junta centro de custo + plano financeiro + percentual
+const apropriacoes = (categorias: Raw[]): Apropriacao[] => categorias.map(c => ({
+  centroCustoId: id(c.costCenterId), centroCusto: txt(c.costCenterName),
+  planoId: id(c.financialCategoryId), plano: txt(c.financialCategoryName),
+  pct: num(c.financialCategoryRate),
+}));
+
 function parcelaBase(r: Raw, categorias: Raw[], obras: Rateio[], hoje: string) {
   const saldo = num(r.balanceAmount);
   const vencimento = dia(r.dueDate);
@@ -45,9 +55,13 @@ function parcelaBase(r: Raw, categorias: Raw[], obras: Rateio[], hoje: string) {
     empresaId: id(r.companyId), empresa: txt(r.companyName),
     tituloId: id(r.billId), parcelaId: id(r.installmentId),
     documento: documento(r),
+    documentoTipo: txt(r.documentIdentificationId), documentoNome: txt(r.documentIdentificationName),
+    numeroDocumento: txt(r.documentNumber),
     emissao: dia(r.issueDate), vencimento, competencia: dia(r.billDate),
-    valor: num(r.originalAmount), saldo,
+    dataBase: dia(r.installmentBaseDate), indexador: txt(r.indexerName),
+    valor: num(r.originalAmount), desconto: num(r.discountAmount), impostos: num(r.taxAmount), saldo,
     situacao: situacao(saldo, vencimento, hoje),
+    apropriacoes: apropriacoes(categorias),
     planos: rateio(categorias, 'financialCategoryId', 'financialCategoryName', 'financialCategoryRate'),
     centrosCusto: centrosCusto(categorias),
     obras: obrasOuCentros(obras, categorias),
@@ -66,6 +80,13 @@ export function normalizarContaPagar(r: Raw, hoje: string): ContaPagar {
   };
 }
 
+// originId do /income (bulk-data-income-v1)
+const ORIGENS_RECEBER: Record<string, string> = {
+  CR: 'Contas a Receber', CO: 'Comercial', ME: 'Medições', CA: 'Contrapartida', CI: 'Controle de Investidores',
+  AR: 'Administração de Obras', SC: 'Condomínios', LO: 'Locações', NE: 'Nota Fiscal Eletrônica',
+  NS: 'Nota Fiscal de Serviço Eletrônica', AC: 'Administração de Compras', NF: 'Solicitação de Nota Fiscal',
+};
+
 // O /income não traz apropriação por obra: a obra sai do centro de custo das categorias (confirmar no tenant).
 export function normalizarContaReceber(r: Raw, hoje: string): ContaReceber {
   const recebimentos = lista(r.receipts);
@@ -76,6 +97,9 @@ export function normalizarContaReceber(r: Raw, hoje: string): ContaReceber {
     ultimoRecebimento: ultimaData(recebimentos),
     inadimplencia: txt(r.defaulterSituation),
     unidade: txt(r.mainUnit),
+    origem: ORIGENS_RECEBER[txt(r.originId)] ?? txt(r.originId),
+    condicao: txt(r.paymentTerm?.id ?? r.paymentTerm),
+    parcelaNumero: txt(r.installmentNumber ?? r.installmentId),
   };
 }
 
@@ -113,6 +137,37 @@ export function normalizarContaCorrente(r: Raw): ContaCorrente {
   };
 }
 
+// originId do /bills (bill-debt-v1)
+const ORIGENS: Record<string, string> = {
+  AC: 'Administração de Compras', RA: 'Administração de Obras', AI: 'Apuração de Impostos', CO: 'Comercial',
+  CF: 'Conhecimento de Frete', CP: 'Contas a Pagar', ME: 'Contratos e Medições', MO: 'Controle de Mão de Obra',
+  DV: 'Devolução de Nota Fiscal', RF: 'Financiamento Bancário', FP: 'Folha de Pagamento', FE: 'Frota de Equipamentos',
+  GI: 'Guia de Impostos', LO: 'Locação de Imóveis', SE: 'Sistemas Externos',
+};
+
+export function normalizarTitulo(r: Raw): TituloInfo {
+  return {
+    id: id(r.id),
+    observacao: txt(r.notes).trim(),
+    valorTotal: num(r.totalInvoiceAmount),
+    desconto: num(r.discount),
+    parcelas: num(r.installmentsNumber),
+    pedidoCompra: txt(r.formattedPurchaseOrderId || r.purchaseOrderId),
+    contrato: txt(r.contractNumber),
+    origem: ORIGENS[txt(r.originId)] ?? txt(r.originId),
+  };
+}
+
+/** Título a receber do REST /accounts-receivable/receivable-bills (só ele traz a observação). */
+export function normalizarTituloReceber(r: Raw): TituloInfo {
+  return {
+    id: id(r.receivableBillId),
+    observacao: txt(r.note).trim(),
+    valorTotal: num(r.receivableBillValue),
+    desconto: 0, parcelas: 0, pedidoCompra: '', contrato: '', origem: '',
+  };
+}
+
 export function normalizarSaldo(r: Raw): SaldoConta {
   return {
     conta: txt(r.accountNumber), empresaId: id(r.companyId),
@@ -135,13 +190,18 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 /**
  * Janela fixa sincronizada (não depende do filtro da tela, para não gastar cota a cada mudança de período):
- * vencimentos de 12 meses atrás até 6 meses à frente; movimentos de 12 meses atrás até hoje.
+ * vencimentos de 12 meses atrás até 6 meses à frente; movimentos de 12 meses atrás até hoje;
+ * títulos (/bills, filtra por emissão) de 15 meses atrás até hoje — cobre quem foi emitido antes de vencer.
  */
 export function janelaFinanceira(hoje = new Date()) {
   const vencDe = iso(new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth() - 12, 1)));
   const vencAte = iso(new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth() + 7, 0)));
-  return { vencDe, vencAte, movDe: vencDe, movAte: iso(hoje) };
+  const titDe = iso(new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth() - 15, 1)));
+  return { vencDe, vencAte, movDe: vencDe, movAte: iso(hoje), titDe, titAte: iso(hoje) };
 }
+
+// /bills é REST paginado (200 por página): só busca se sobrar folga na cota do dia
+const FOLGA_REST_TITULOS = 15;
 
 export interface CargaFinanceira {
   dados: Partial<Omit<DadosFinanceiros, 'obras'>>;
@@ -166,7 +226,31 @@ export const FinanceiroService = {
     await tentar('Caixa e bancos', 'movimentos', () => this.movimentos(j.movDe, j.movAte, cfg));
     await tentar('Contas correntes', 'contas', () => this.contasCorrentes(cfg));
     await tentar('Saldos', 'saldos', () => this.saldos(j.movAte, cfg));
+    if (QuotaService.disponivel() >= FOLGA_REST_TITULOS)
+      await tentar('Títulos a pagar (observação e valor total)', 'titulos', () => this.titulos(j.titDe, j.titAte, cfg));
+    else erros.push('Títulos a pagar (observação e valor total): cota REST do dia baixa, fica para a próxima sincronização');
+    if (dados.receber?.length)
+      await tentar('Títulos a receber (observação)', 'titulosReceber', () => this.titulosReceber(dados.receber!.map(r => r.clienteId), cfg));
     return { dados, erros };
+  },
+
+  /**
+   * Títulos a receber (REST): o Sienge só lista por cliente, então faz 1 consulta por cliente das parcelas,
+   * parando antes de comer a folga da cota do dia (o que faltar vem na próxima sincronização).
+   */
+  async titulosReceber(clientes: string[], cfg = ConfigService.efetiva()): Promise<TituloInfo[]> {
+    const out: TituloInfo[] = [];
+    for (const c of [...new Set(clientes.filter(Boolean))]) {
+      if (QuotaService.disponivel() < FOLGA_REST_TITULOS) break;
+      const rows = await listarTudo(cfg, '/accounts-receivable/receivable-bills', { customerId: c });
+      out.push(...rows.map(normalizarTituloReceber));
+    }
+    return out;
+  },
+
+  /** Títulos a pagar emitidos no período (REST /bills): observação, valor total, nº de parcelas, pedido, contrato, origem. */
+  async titulos(de: string, ate: string, cfg = ConfigService.efetiva()): Promise<TituloInfo[]> {
+    return (await listarTudo(cfg, '/bills', { startDate: de, endDate: ate })).map(normalizarTitulo);
   },
 
   /** Parcelas a pagar com vencimento no período (selectionType D), com pagamentos e rateios. 1 requisição BULK. */

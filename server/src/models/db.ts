@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS importacoes (
 CREATE TABLE IF NOT EXISTS pedido_itens (pedido TEXT PRIMARY KEY, itens TEXT NOT NULL, em TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS fin_registros (tipo TEXT NOT NULL, chave TEXT NOT NULL, data TEXT, json TEXT NOT NULL, PRIMARY KEY (tipo, chave));
 CREATE TABLE IF NOT EXISTS fin_snapshot (tipo TEXT PRIMARY KEY, json TEXT NOT NULL, em TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS obra_insumos (obraId TEXT PRIMARY KEY, obra TEXT, json TEXT NOT NULL, em TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS i_fin_data ON fin_registros(tipo, data);
 CREATE INDEX IF NOT EXISTS i_compras_data ON compras(data);
 CREATE INDEX IF NOT EXISTS i_consumos_data ON consumos(data);
@@ -39,6 +40,20 @@ CREATE INDEX IF NOT EXISTS i_consumos_data ON consumos(data);
 try { db.exec("ALTER TABLE consumos ADD COLUMN origem TEXT DEFAULT 'api'"); } catch { /* coluna já existe */ }
 // requisições bulk-data têm cota diária própria
 try { db.exec('ALTER TABLE api_uso ADD COLUMN bulk INTEGER NOT NULL DEFAULT 0'); } catch { /* coluna já existe */ }
+// campos do pedido/item de compra do Sienge (compras gravadas antes disso ficam vazias até a próxima sincronização do período)
+for (const col of [
+  "obraId TEXT DEFAULT ''", "obra TEXT DEFAULT ''", 'item INTEGER DEFAULT 0', "codigo TEXT DEFAULT ''",
+  "detalhe TEXT DEFAULT ''", "marca TEXT DEFAULT ''", 'precoUnitario REAL DEFAULT 0', "situacao TEXT DEFAULT ''",
+  'autorizado INTEGER DEFAULT 1', 'atrasado INTEGER DEFAULT 0', "comprador TEXT DEFAULT ''", "condicaoPagamento TEXT DEFAULT ''",
+]) {
+  try { db.exec(`ALTER TABLE compras ADD COLUMN ${col}`); } catch { /* coluna já existe */ }
+}
+
+// cadastro de credores (cache: pode ser apagado e buscado de novo). Versão antiga tinha "uf", que o Sienge não manda.
+const colsFornecedores = (db.prepare('PRAGMA table_info(fornecedores)').all() as { name: string }[]).map(c => c.name);
+if (colsFornecedores.includes('uf')) db.exec('DROP TABLE fornecedores');
+db.exec(`CREATE TABLE IF NOT EXISTS fornecedores (
+  id TEXT PRIMARY KEY, nome TEXT, fantasia TEXT, cnpj TEXT, cidade TEXT, telefone TEXT, email TEXT, ativo INTEGER, em TEXT NOT NULL)`);
 
 export function transacao(fn: () => void): void {
   db.exec('BEGIN');

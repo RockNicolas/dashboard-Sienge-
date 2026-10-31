@@ -109,7 +109,7 @@ function Skyline() {
 // ---------- prévia do painel (decorativa) ----------
 const BARRAS = [62, 48, 71, 80, 58, 52, 66, 74, 60, 86];
 function Previa() {
-  const consumo = useContador(75, 1800, 900);
+  const atendido = useContador(75, 1800, 900);
   const fornecedores = useContador(128, 1800, 1100);
   const classeA = useContador(80, 1800, 1300);
   const pontos = BARRAS.map((v, i) => [24 + i * 32 + 11, 132 - v * 0.82 - 10] as const);
@@ -121,7 +121,7 @@ function Previa() {
       <div className="lg-previa">
         <div className="lg-previa-topo">
           <span className="lg-pontos"><i /><i /><i /></span>
-          <b>Comprado × Consumido</b>
+          <b>Orçado × Atendido</b>
           <span className="lg-vivo"><i />ao vivo</span>
         </div>
         <svg viewBox="0 0 360 140" className="lg-grafico">
@@ -140,9 +140,9 @@ function Previa() {
       <div className="lg-chip c1">
         <svg viewBox="0 0 36 36" className="lg-anel">
           <circle cx="18" cy="18" r="15" />
-          <circle cx="18" cy="18" r="15" className="v" strokeDasharray={anel} strokeDashoffset={anel * (1 - consumo / 100)} />
+          <circle cx="18" cy="18" r="15" className="v" strokeDasharray={anel} strokeDashoffset={anel * (1 - atendido / 100)} />
         </svg>
-        <div><small>Consumido nas obras</small><b>{Math.round(consumo)}%</b></div>
+        <div><small>Orçamento atendido</small><b>{Math.round(atendido)}%</b></div>
       </div>
       <div className="lg-chip c2">
         <Ico d={I.truck} className="lg-chip-ico" />
@@ -150,15 +150,14 @@ function Previa() {
       </div>
       <div className="lg-chip c3">
         <span className="lg-tag-a">A</span>
-        <div><small>Curva ABC</small><b>{Math.round(classeA)}% do gasto</b></div>
+        <div><small>Fornecedores classe A</small><b>{Math.round(classeA)}% das compras</b></div>
       </div>
     </div>
   );
 }
 
 const TITULO: [string, boolean][] = [
-  ['Compras', false], ['e', false], ['consumo', true], ['das', false], ['suas', false], ['obras,', false],
-  ['em', false], ['um', true], ['só', true], ['painel.', true],
+  ['Suprimentos', true], ['das', false], ['suas', false], ['obras,', false], ['em', false], ['um', true], ['só', true], ['painel.', true],
 ];
 
 // ---------- página ----------
@@ -217,7 +216,7 @@ export default function LoginPage() {
 
         <div className="lg-marca">
           <span className="lg-logo">S</span>
-          <span>Compras &amp; Consumo<small>Painel Sienge</small></span>
+          <span>Suprimentos<small>Painel Sienge</small></span>
         </div>
 
         <div className="lg-centro">
@@ -226,11 +225,11 @@ export default function LoginPage() {
               <span key={i} className={`lg-w ${g ? 'lg-grad' : ''}`} style={{ '--i': i } as React.CSSProperties}>{p}&nbsp;</span>
             ))}
           </h1>
-          <p className="lg-sub">Do pedido de compra à apropriação na obra: veja quanto foi comprado, quanto cada obra usou e onde está o dinheiro.</p>
+          <p className="lg-sub">Do pedido de compra ao resultado da obra: histórico de preços, ranking de fornecedores e custos orçado × realizado, direto do Sienge.</p>
           <ul className="lg-feats">
-            <li style={{ '--i': 0 } as React.CSSProperties}><Ico d={I.compare} />Comprado × consumido por obra</li>
+            <li style={{ '--i': 0 } as React.CSSProperties}><Ico d={I.compare} />Histórico de compras</li>
             <li style={{ '--i': 1 } as React.CSSProperties}><Ico d={I.truck} />Ranking de fornecedores</li>
-            <li style={{ '--i': 2 } as React.CSSProperties}><Ico d={I.bars} />Curva ABC e preços</li>
+            <li style={{ '--i': 2 } as React.CSSProperties}><Ico d={I.bars} />Custos e resultado por obra</li>
           </ul>
           <Previa />
         </div>
@@ -240,9 +239,9 @@ export default function LoginPage() {
 
       <main className="lg-lado">
         <form className={`lg-card ${tremer ? 'lg-treme' : ''}`} onSubmit={entrar} onAnimationEnd={() => setTremer(false)} noValidate>
-          <div className="lg-marca lg-marca-mobile"><span className="lg-logo">S</span><span>Compras &amp; Consumo<small>Painel Sienge</small></span></div>
+          <div className="lg-marca lg-marca-mobile"><span className="lg-logo">S</span><span>Suprimentos<small>Painel Sienge</small></span></div>
           <h2>Bem-vindo de volta</h2>
-          <p className="lg-desc">Entre para acompanhar compras, consumo e fornecedores das suas obras.</p>
+          <p className="lg-desc">Entre para acompanhar compras, fornecedores e custos das suas obras.</p>
 
           <div className={`lg-campo ${erro ? 'invalido' : ''}`}>
             <input id="lg-usuario" value={usuario} onChange={e => { setUsuario(e.target.value); setErro(''); }}

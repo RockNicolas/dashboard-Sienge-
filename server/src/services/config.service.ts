@@ -6,6 +6,8 @@ import path from 'node:path';
 import { ROOT } from '../config/env';
 import { ConfigModel } from '../models/ConfigModel';
 import { DadosModel } from '../models/DadosModel';
+import { FornecedorModel } from '../models/FornecedorModel';
+import { ObraInsumosModel } from '../models/ObraInsumosModel';
 import { PedidoItensModel } from '../models/PedidoItensModel';
 import { UsoApiModel } from '../models/UsoApiModel';
 import { PLANOS, planoPorId, planoPorLimite } from './planos';
@@ -101,13 +103,15 @@ export const ConfigService = {
   },
 
   /**
-   * Esquece o usuário de API: credenciais, plano, contagem de cota/cabeçalhos e itens de pedido em cache.
-   * Compras e consumos já sincronizados continuam salvos.
+   * Esquece o usuário de API: credenciais, plano, contagem de cota/cabeçalhos e o que fica em cache por id do Sienge
+   * (itens de pedido, cadastro de credores, insumos das obras). Compras e consumos já sincronizados continuam salvos.
    */
   desconectar(): void {
     ConfigModel.remover('subdominio', 'usuario', 'senha', 'plano', 'limiteDiario');
     UsoApiModel.limpar();
     PedidoItensModel.limpar();
+    FornecedorModel.limpar();
+    ObraInsumosModel.limpar();
   },
 
   /** Aplica campos do formulário sobre a configuração salva, sem gravar (usado no "Testar conexão"). */
