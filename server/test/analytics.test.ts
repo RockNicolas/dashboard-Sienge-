@@ -59,9 +59,11 @@ test('histórico do material: último preço, mín/médio/máx e preço médio d
   const d = AnalyticsService.dashboard(dados([
     compra({ pedido: '1', data: '2026-01-10', qtd: 100, preco: 10, valor: 1000, fornecedor: 'A' }),
     compra({ pedido: '2', data: '2026-01-20', qtd: 100, preco: 12, valor: 1200, fornecedor: 'B' }),
-    compra({ pedido: '3', data: '2026-03-05', qtd: 50, preco: 11, valor: 550, fornecedor: 'C', fornecedorId: 'f3' }),
+    compra({ pedido: '3', data: '2026-03-05', qtd: 50, preco: 11, valor: 550, fornecedor: 'C', fornecedorId: 'f3', codigo: 'M0012' }),
   ], []), F);
   const h = d.historico[0];
+  // número do insumo (resourceId) e o código auxiliar (resourceCode) de quem tiver
+  assert.deepEqual([h.insumoId, h.codigo], ['i1', 'M0012']);
   assert.equal(h.compras, 3);
   assert.equal(h.fornecedores, 2);
   assert.equal(h.precoMin, 10);

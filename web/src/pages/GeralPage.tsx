@@ -1,17 +1,17 @@
 import { Bar } from 'react-chartjs-2';
-import { Barra, Card, Grafico, Kpi, Kpis } from '../components/ui';
+import { Link } from 'react-router-dom';
+import { Barra, Card, CodInsumo, Grafico, Kpi, Kpis } from '../components/ui';
 import { useDados } from '../hooks/useDashboard';
 import { brl, eixoBRL, PALETA, pct, rotuloPeriodo } from '../lib/format';
 
-const Ranking = ({ itens }: { itens: { k: string; nome: string; valor: number }[] }) => (
+/** Top 5 com barra; cada item leva à tela de detalhe já com a modal aberta (`para`). `cod`: número do insumo. */
+const Ranking = ({ itens }: { itens: { k: string; nome: string; valor: number; para?: string; cod?: string }[] }) => (
   itens.length ? (
     <ul className="rank">
-      {itens.map(i => (
-        <li key={i.k}>
-          <span>{i.nome}</span><span>{brl(i.valor)}</span>
-          <Barra v={i.valor} max={itens[0]?.valor ?? 1} />
-        </li>
-      ))}
+      {itens.map(i => {
+        const conteudo = <><span>{i.cod && <CodInsumo id={i.cod} />}{i.nome}</span><span>{brl(i.valor)}</span><Barra v={i.valor} max={itens[0]?.valor ?? 1} /></>;
+        return <li key={i.k}>{i.para ? <Link to={i.para} className="rank-link" title={`Ver detalhe de ${i.nome}`}>{conteudo}</Link> : conteudo}</li>;
+      })}
     </ul>
   ) : <p className="muted">Sem compras no período.</p>
 );
@@ -51,13 +51,13 @@ export default function GeralPage() {
 
       <div className="stack">
         <Card titulo="Top 5 fornecedores">
-          <Ranking itens={forn.map(f => ({ k: f.fornecedorId, nome: f.fornecedor, valor: f.valor }))} />
+          <Ranking itens={forn.map(f => ({ k: f.fornecedorId, nome: f.fornecedor, valor: f.valor, para: `/fornecedores?fornecedor=${encodeURIComponent(f.fornecedorId)}` }))} />
         </Card>
         <Card titulo="Top 5 materiais por valor comprado">
-          <Ranking itens={materiais.map(m => ({ k: m.insumoId, nome: m.insumo, valor: m.valor }))} />
+          <Ranking itens={materiais.map(m => ({ k: m.insumoId, cod: m.insumoId, nome: m.insumo, valor: m.valor, para: `/compras?material=${encodeURIComponent(m.insumoId)}` }))} />
         </Card>
         <Card titulo="Compras por obra">
-          <Ranking itens={obras.map(o => ({ k: o.obraId || '-', nome: o.obra, valor: o.valor }))} />
+          <Ranking itens={obras.map(o => ({ k: o.obraId || '-', nome: o.obra, valor: o.valor, para: o.obraId ? `/custos-obra?obra=${encodeURIComponent(o.obraId)}` : undefined }))} />
         </Card>
       </div>
     </div>

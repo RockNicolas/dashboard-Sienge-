@@ -3,7 +3,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ROOT } from '../config/env';
+import { env } from '../config/env';
 import { ConfigModel } from '../models/ConfigModel';
 import { DadosModel } from '../models/DadosModel';
 import { FornecedorModel } from '../models/FornecedorModel';
@@ -11,9 +11,10 @@ import { ObraInsumosModel } from '../models/ObraInsumosModel';
 import { PedidoItensModel } from '../models/PedidoItensModel';
 import { UsoApiModel } from '../models/UsoApiModel';
 import { PLANOS, planoPorId, planoPorLimite } from './planos';
+import { SyncConfigService } from './sync-config.service';
 import type { ConfigEntrada, ConfigPublica } from '../types';
 
-const KEY_FILE = path.join(ROOT, 'data', 'secret.key');
+const KEY_FILE = path.join(env.dataDir, 'secret.key');
 
 function chave(): Buffer {
   if (!fs.existsSync(KEY_FILE)) fs.writeFileSync(KEY_FILE, crypto.randomBytes(32), { mode: 0o600 });
@@ -89,6 +90,7 @@ export const ConfigService = {
     return {
       usarMock: c.usarMock, mockEfetivo: ConfigService.mock(), subdominio: c.subdominio, usuario: c.usuario,
       senhaDefinida: !!c.senha, endpointConsumo: c.endpointConsumo, plano: c.plano, planos: PLANOS,
+      sincronizacao: SyncConfigService.obter(),
     };
   },
 
@@ -103,11 +105,12 @@ export const ConfigService = {
   },
 
   /**
-   * Esquece o usuário de API: credenciais, plano, contagem de cota/cabeçalhos e o que fica em cache por id do Sienge
-   * (itens de pedido, cadastro de credores, insumos das obras). Compras e consumos já sincronizados continuam salvos.
+   * Esquece o usuário de API: credenciais, plano, o que puxar (período/obras), contagem de cota/cabeçalhos e o que fica
+   * em cache por id do Sienge (itens de pedido, cadastro de credores, insumos das obras). Compras e consumos já
+   * sincronizados continuam salvos.
    */
   desconectar(): void {
-    ConfigModel.remover('subdominio', 'usuario', 'senha', 'plano', 'limiteDiario');
+    ConfigModel.remover('subdominio', 'usuario', 'senha', 'plano', 'limiteDiario', 'sincronizacao');
     UsoApiModel.limpar();
     PedidoItensModel.limpar();
     FornecedorModel.limpar();

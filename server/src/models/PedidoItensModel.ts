@@ -16,6 +16,12 @@ export const PedidoItensModel = {
     return out;
   },
 
+  /** Quais desses pedidos já têm os itens salvos (sem ler os itens). */
+  salvos(pedidos: string[]): Set<string> {
+    const q = db.prepare('SELECT 1 FROM pedido_itens WHERE pedido = ?');
+    return new Set(pedidos.filter(p => q.get(p)));
+  },
+
   limpar(): void {
     db.exec('DELETE FROM pedido_itens');
   },

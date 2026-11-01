@@ -54,6 +54,93 @@ export async function listarTudo(cfg: SiengeCfg, path: string, params: Params = 
   return out;
 }
 
+// ---------- listas guardadas por pouco tempo ----------
+// A estimativa de cota (Configurações → O que puxar do Sienge) lista as obras e os pedidos do período; a sincronização
+// que vem logo depois reaproveita essas listas em vez de gastar a cota de novo.
+const VALIDADE_LISTA = 30 * 60_000;
+// "sub|usuário|de|até|*" → todos os pedidos do período; "…|<obra>" → os pedidos de uma obra (filtro buildingId)
+const listasPedidos = new Map<string, { em: number; pedidos: Raw[] }>();
+const totalPedidos = new Map<string, number>(); // "sub|usuário|de|até" → quantos pedidos o período tem (todas as obras)
+let listaObras: { em: number; chave: string; obras: Raw[] } | null = null;
+let contagemCredores: { em: number; chave: string; total: number | null } | null = null;
+
+const fresca = (em: number) => Date.now() - em < VALIDADE_LISTA;
+const chaveCfg = (cfg: SiengeCfg) => `${cfg.subdominio}|${cfg.usuario}`;
+const chaveLista = (cfg: SiengeCfg, de: string, ate: string) => `${chaveCfg(cfg)}|${de}|${ate}`;
+const daObra = (obras: string[] | null) => (p: Raw) => !obras || obras.includes(txt(p.buildingId));
+const guardar = (k: string, pedidos: Raw[]) => {
+  listasPedidos.set(k, { em: Date.now(), pedidos });
+  for (const [chave, v] of listasPedidos) if (!fresca(v.em)) listasPedidos.delete(chave);
+};
+
+/** Quantos pedidos o período tem em todas as obras (null se ainda não listou). */
+export const totalDoPeriodo = (cfg: SiengeCfg, de: string, ate: string) => totalPedidos.get(chaveLista(cfg, de, ate)) ?? null;
+
+/** Obras e centros de custo que o usuário de API enxerga (/enterprises). */
+export async function listarObras(cfg: SiengeCfg): Promise<Raw[]> {
+  if (listaObras && listaObras.chave === chaveCfg(cfg) && fresca(listaObras.em)) return listaObras.obras;
+  const obras = await listarTudo(cfg, '/enterprises');
+  listaObras = { em: Date.now(), chave: chaveCfg(cfg), obras };
+  return obras;
+}
+
+/**
+ * Pedidos do período (inclusive cancelados; quem chama filtra). Com obras escolhidas, busca obra a obra pelo filtro
+ * buildingId da API quando isso gasta menos que listar a empresa toda (200 pedidos por requisição); senão lista tudo
+ * e separa. O que veio fica guardado por 30 min (a sincronização logo depois da estimativa não gasta de novo).
+ */
+export async function listarPedidos(cfg: SiengeCfg, de: string, ate: string, obras: string[] | null = null): Promise<Raw[]> {
+  const base = chaveLista(cfg, de, ate);
+  const tudo = listasPedidos.get(`${base}|*`);
+  if (tudo && fresca(tudo.em)) return tudo.pedidos.filter(daObra(obras));
+  const daObraGuardada = (id: string) => { const l = listasPedidos.get(`${base}|${id}`); return l && fresca(l.em) ? l.pedidos : null; };
+  const faltam = obras?.filter(id => !daObraGuardada(id)) ?? [];
+  if (obras && !faltam.length) return obras.flatMap(id => daObraGuardada(id)!);
+
+  const obraAObra = async () => {
+    for (const id of faltam) guardar(`${base}|${id}`, await listarTudo(cfg, '/purchase-orders', { startDate: de, endDate: ate, buildingId: id }));
+    return obras!.flatMap(id => daObraGuardada(id) ?? []);
+  };
+  // já se sabe o tamanho do período: escolhe direto o jeito mais barato
+  const total = totalPedidos.get(base);
+  if (obras && total != null && faltam.length <= Math.ceil(total / PAGE)) return obraAObra();
+
+  // 1ª página da lista completa: diz o total do período (e, se couber numa página, já é a lista toda)
+  const p1 = await get(cfg, '/purchase-orders', { startDate: de, endDate: ate, limit: PAGE, offset: 0 });
+  const rows: Raw[] = lista(p1.results);
+  const n = num(p1.resultSetMetadata?.count ?? rows.length);
+  totalPedidos.set(base, n);
+  if (obras && rows.length < n && faltam.length <= Math.ceil(n / PAGE) - 1) return obraAObra();
+  for (let offset = PAGE; offset < n; offset += PAGE) {
+    const mais = lista((await get(cfg, '/purchase-orders', { startDate: de, endDate: ate, limit: PAGE, offset })).results);
+    rows.push(...mais);
+    if (!mais.length) break;
+  }
+  guardar(`${base}|*`, rows);
+  return rows.filter(daObra(obras));
+}
+
+/** Quantos credores o Sienge tem (1 requisição, guardada 30 min); null se o usuário de API não acessa /creditors. */
+export async function contarCredores(cfg: SiengeCfg): Promise<number | null> {
+  if (contagemCredores && contagemCredores.chave === chaveCfg(cfg) && fresca(contagemCredores.em)) return contagemCredores.total;
+  let total: number | null = null;
+  try {
+    total = num((await get(cfg, '/creditors', { limit: 1, offset: 0 })).resultSetMetadata?.count);
+  } catch (e) {
+    if (/Cota diária/.test((e as Error).message)) throw e;
+  }
+  contagemCredores = { em: Date.now(), chave: chaveCfg(cfg), total };
+  return total;
+}
+
+/** Erro da API em português, para mostrar na tela. */
+export function explicarErro(m: string): string {
+  if (/Sienge 401 /.test(m)) return 'Usuário ou senha da API inválidos (401).';
+  if (/Sienge 403 /.test(m)) return 'Acesso negado (403): o usuário de API não tem permissão neste módulo.';
+  if (/Sienge 404 /.test(m)) return 'Subdomínio não encontrado (404). Confira o nome da empresa na URL do Sienge.';
+  return m;
+}
+
 // Executa tarefas com concorrência limitada (respeita rate limit)
 async function paralelo<T, R>(itens: T[], n: number, fn: (i: T) => Promise<R>): Promise<R[]> {
   const res: R[] = [];
@@ -207,26 +294,33 @@ export interface Carga {
   avisos: string[];    // problemas que não impedem a sincronização (ex.: sem acesso ao cadastro de credores)
 }
 
+/** O que buscar (escolhido em Configurações → O que puxar do Sienge). */
+export interface OpcoesCarga {
+  obras: string[] | null;  // null = todas
+  fornecedores: boolean;   // cadastro de credores
+}
+
 export const SiengeService = {
   /**
    * Busca o período no Sienge cabendo na cota diária: listas primeiro (poucas requisições) e, com o que sobrar,
    * os itens dos pedidos ainda não baixados, dos mais recentes para os mais antigos. Os itens ficam salvos,
    * então se a cota acabar a próxima sincronização continua de onde parou.
+   * Com obras escolhidas, só os pedidos dessas obras (pedido sem obra entra só com "todas as obras").
    */
-  async carregar(from: string, to: string): Promise<Carga> {
+  async carregar(from: string, to: string, op: OpcoesCarga = { obras: null, fornecedores: true }): Promise<Carga> {
     const cfg = ConfigService.efetiva();
     if (!ConfigService.completa(cfg)) throw new Error('Configure subdomínio, usuário e senha do Sienge na tela Configurações.');
     if (QuotaService.disponivel() <= 0)
       throw new Error('Cota diária da API do Sienge no fim (o restante fica reservado). Usando os dados já salvos.');
 
-    const empresas = await listarTudo(cfg, '/enterprises').catch(e => {
+    const empresas = await listarObras(cfg).catch(e => {
       if (/Cota diária/.test((e as Error).message)) throw e;
       return [] as Raw[];
     });
     const obras = new Map(empresas.map(e => [String(e.id), String(e.name ?? e.commercialName)]));
 
     // cancelados e reprovados não contam como compra (e nem gastam requisição com os itens)
-    const pedidos = (await listarTudo(cfg, '/purchase-orders', { startDate: from, endDate: to })).filter(pedidoValido);
+    const pedidos = (await listarPedidos(cfg, from, to, op.obras)).filter(pedidoValido);
 
     // Consumo (telas de consumo ocultas por enquanto). O endpoint padrão /stock-movements não existe na API pública
     // do Sienge (veja a lista em https://api.sienge.com.br/docs/), então a chamada fica desligada para não gastar cota.
@@ -239,7 +333,7 @@ export const SiengeService = {
     const consumos = movs.map(m => normalizarConsumo(m, obras));
 
     // nomes dos fornecedores: no máximo metade do que sobrou da cota, para os itens dos pedidos também andarem
-    const avisoFornecedores = await buscarFornecedores(cfg, pedidos, Math.ceil(QuotaService.disponivel() / 2));
+    const avisoFornecedores = op.fornecedores ? await buscarFornecedores(cfg, pedidos, Math.ceil(QuotaService.disponivel() / 2)) : null;
 
     const itens = PedidoItensModel.obter(pedidos.map(p => String(p.id)));
     const faltando = pedidos
@@ -272,11 +366,7 @@ export const SiengeService = {
       const plano = QuotaService.verificarPlano(cfg.plano);
       return { ok: plano.confere !== false, mensagem: `Conexão com o Sienge OK. ${plano.mensagem}` };
     } catch (e) {
-      const m = (e as Error).message;
-      if (/ 401 /.test(m)) return { ok: false, mensagem: 'Usuário ou senha da API inválidos (401).' };
-      if (/ 403 /.test(m)) return { ok: false, mensagem: 'Acesso negado (403): o usuário de API não tem permissão neste módulo.' };
-      if (/ 404 /.test(m)) return { ok: false, mensagem: 'Subdomínio não encontrado (404). Confira o nome da empresa na URL do Sienge.' };
-      return { ok: false, mensagem: m };
+      return { ok: false, mensagem: explicarErro((e as Error).message) };
     }
   },
 };

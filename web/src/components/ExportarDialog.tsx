@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, NaoAutenticado, type FiltrosUI } from '../api/client';
 import { useDashboard } from '../hooks/useDashboard';
 import { nomeDoArquivo, salvarArquivo } from '../lib/arquivo';
+import { cliqueFora } from '../lib/dialogo';
 import { atalhoDe, atalhosPeriodo } from '../lib/periodo';
 
 type Formato = 'pdf' | 'excel' | 'dashboard';
@@ -41,7 +42,7 @@ export default function ExportarDialog({ aberto, fechar }: { aberto: boolean; fe
     if (!aberto && d.open) d.close();
   }, [aberto]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const atalhos = atalhosPeriodo();
+  const atalhos = atalhosPeriodo(new Date(), !!dados?.janela);
   const atalho = atalhoDe(atalhos, f.from, f.to);
   const alternar = (s: SecaoId) => setSecoes(l => (l.includes(s) ? l.filter(x => x !== s) : SECOES.map(x => x.id).filter(x => x === s || l.includes(x))));
   const obraNome = dados?.obrasDisponiveis.find(o => o.id === f.obra)?.nome ?? 'todas as obras';
@@ -68,7 +69,7 @@ export default function ExportarDialog({ aberto, fechar }: { aberto: boolean; fe
   };
 
   return (
-    <dialog ref={ref} className="dialogo" onClose={fechar} onClick={e => { if (e.target === ref.current && !gerando) fechar(); }}
+    <dialog ref={ref} className="dialogo" onClose={fechar} onClick={e => { if (cliqueFora(e) && !gerando) fechar(); }}
       aria-labelledby="exportar-titulo">
       <div className="dialogo-caixa">
         <header className="dialogo-topo">

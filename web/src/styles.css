@@ -16,6 +16,9 @@
   --side-text: #aeb7c5;
   --side-active: #ffffff;
   --radius: 0.875rem;
+  /* altura-base dos gráficos (lado a lado com outro cartão, o gráfico cresce até a altura do vizinho) */
+  --cv-h: clamp(13rem, 36vh, 28rem);
+  --cv-alto: clamp(18rem, 50vh, 36rem);
 }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
@@ -75,25 +78,25 @@ b { font-weight: 650; }
 .filtros button { padding: 0.375rem 0.75rem; }
 button.exportar { display: inline-flex; align-items: center; gap: 0.375rem; }
 button.exportar svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-main { padding: 1rem clamp(0.875rem, 1.6vw, 1.75rem) 2rem; width: 100%; }
+/* `area`: largura útil da tela (ou da modal) — os KPIs escolhem quantas colunas usar por ela */
+main { padding: 1rem clamp(0.875rem, 1.6vw, 1.75rem) 2rem; width: 100%; container: area / inline-size; }
 
-/* composições que aproveitam a largura: colunas surgem conforme o espaço */
-.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); gap: 0.875rem; margin-bottom: 0.875rem; align-items: start; }
-.cols > .card { margin: 0; min-width: 0; }
+/* composições lado a lado, sem buracos:
+   - os cartões de uma linha ficam da mesma altura e o gráfico cresce até ocupar o cartão;
+   - quando não cabem lado a lado, cada um ocupa a linha inteira (nunca sobra um sozinho com espaço vazio ao lado);
+   - `.largo`: cartão com tabela de muitas colunas, que precisa de mais largura para não virar cartões. */
+.cols { display: flex; flex-wrap: wrap; gap: 0.875rem; margin-bottom: 0.875rem; }
+.cols > * { flex: 1 1 30rem; min-width: 0; margin: 0; }
+.cols > .largo { flex: 2 1 53rem; }
+.cols > .card { display: flex; flex-direction: column; }
+.cols > .card > .cv { flex: 1 0 var(--cv-h); height: auto; min-height: 0; }
+.cols > .card > .cv.alto { flex-basis: var(--cv-alto); }
+.cols > .card > table { margin-top: 0; }
 .geral { display: grid; gap: 0.875rem; grid-template-columns: minmax(0, 1fr); }
 .geral > * { min-width: 0; margin: 0; }
 .geral .kpis { margin: 0; }
-.stack { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 0.875rem; min-width: 0; align-content: start; }
-.stack > .card { margin: 0; }
-@media (min-width: 1500px) {
-  .geral { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
-  .geral .kpis { grid-column: 1 / -1; }
-  .stack { display: flex; flex-direction: column; }
-}
-@media (min-width: 2400px) {
-  .geral { grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1fr); }
-  .stack { display: contents; }
-}
+.stack { display: flex; flex-wrap: wrap; gap: 0.875rem; min-width: 0; }
+.stack > .card { flex: 1 1 18rem; min-width: 0; margin: 0; }
 
 /* ---------- controles ---------- */
 label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem; color: var(--muted); }
@@ -111,21 +114,39 @@ button.sec.perigo:hover { border-color: var(--neg); }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 0.9375rem 1.0625rem; margin-bottom: 0.875rem; box-shadow: var(--shadow); }
 .card > h2 { margin-bottom: 0.625rem; }
 .card > h2 + .muted { margin: -0.375rem 0 0.625rem; }
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: 0.625rem; margin-bottom: 0.875rem; }
+/* KPIs: colunas pela quantidade (data-n), para nenhum ficar sozinho na última linha:
+   6 → 6 | 3+3 | 2+2+2 · 5 → 5 | 3+2 | 2+2+1 (o último na largura toda) · 4 → 4 | 2+2 */
+.kpis { display: grid; grid-template-columns: repeat(var(--n, 4), minmax(0, 1fr)); gap: 0.625rem; margin-bottom: 0.875rem; }
+@container area (max-width: 66rem) {
+  .kpis[data-n="6"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container area (max-width: 55rem) {
+  .kpis[data-n="5"] { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .kpis[data-n="5"] > :nth-child(-n+3) { grid-column: span 2; }
+  .kpis[data-n="5"] > :nth-child(n+4) { grid-column: span 3; }
+}
+@container area (max-width: 44rem) {
+  .kpis[data-n="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container area (max-width: 28rem) {
+  .kpis[data-n] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpis[data-n] > :nth-child(n) { grid-column: auto; }
+  .kpis[data-n] > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
 .card .kpis { margin-top: 0.75rem; }
 .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 0.75rem; padding: 0.6875rem 0.875rem; box-shadow: var(--shadow); position: relative; overflow: hidden; }
 .kpi::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 0.1875rem; background: var(--accent, var(--brand)); }
 .kpi small:first-child { display: block; color: var(--muted); font-size: 0.7188rem; font-weight: 500; }
 .kpi b { display: block; font-size: 1.375rem; font-weight: 700; letter-spacing: -.02em; margin: 1px 0; font-variant-numeric: tabular-nums; }
 .kpi small:last-child { color: var(--muted); font-size: 0.6875rem; }
-.cv { position: relative; height: clamp(13rem, 36vh, 28rem); }
-.cv.alto { height: clamp(18rem, 50vh, 36rem); }
+.cv { position: relative; height: var(--cv-h); }
+.cv.alto { height: var(--cv-alto); }
 .menu-btn { display: none; }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 1.125rem; margin-bottom: 0.875rem; }
 .grid2 .cv { height: clamp(15rem, 34vh, 32rem); }
 .rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 .rank li { display: grid; grid-template-columns: 1fr auto; gap: 0.25rem 0.75rem; align-items: center; }
-.rank li span:last-child { font-variant-numeric: tabular-nums; font-weight: 600; }
+.rank li > span:last-child { font-variant-numeric: tabular-nums; font-weight: 600; }
 .rank .bar { grid-column: 1 / -1; }
 
 /* ---------- tabelas ---------- */
@@ -146,6 +167,10 @@ tbody tr:last-child td { border-bottom: 0; }
 .tabela-rolagem { overflow-x: auto; }
 table.titulos td { vertical-align: top; }
 td.txt { white-space: normal; min-width: 7rem; } /* textos (obra, fornecedor) quebram linha em vez de alargar a tabela */
+small.bloco { display: block; } /* 2ª linha (código auxiliar, detalhe, datas…) */
+td small.bloco { font-size: 0.7188rem; }
+/* situação ("Parcialmente entregue"): numa linha só quando há espaço; no aperto quebra em duas em vez de alargar a tabela */
+td .tag { white-space: normal; border-radius: 0.625rem; line-height: 1.3; }
 table.titulos small.bloco { display: block; font-size: 0.75rem; }
 table.titulos small.obs { max-width: 22rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .barra-fin { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin-bottom: 1rem; }
@@ -188,7 +213,7 @@ button.mais { margin-top: 0.75rem; }
    Decidem pela largura do CARTÃO em que estão (container query), não da tela: funciona igual com
    uma tabela ocupando a largura toda ou duas lado a lado.
    - cartão largo: tabela normal; abaixo de 1300px as colunas secundárias (.col-sec) somem;
-   - cartão estreito (até 760px; tabelas muito largas, .resp-largo, até 1000px): cada linha vira um cartão
+   - cartão estreito (até 760px; tabelas muito largas, .resp-largo, até 860px): cada linha vira um cartão
      com a 1ª coluna como título e as demais numa grade "rótulo / valor" (rótulo em data-label);
    - celular (cartão até 480px): só o essencial em cada cartão. */
 .card { container-type: inline-size; }
@@ -213,7 +238,8 @@ button.mais { margin-top: 0.75rem; }
   table.resp tbody tr:hover td, table.resp tr.sel td { background: none; }
   table.resp tr.sel { border-color: var(--brand); background: var(--brand-soft); }
 }
-@container (min-width: 761px) and (max-width: 1000px) {
+/* itens de pedido cabem como tabela a partir de ~850px (situação quebra em 2 linhas, colunas secundárias somem) */
+@container (min-width: 761px) and (max-width: 860px) {
   table.resp-largo { margin-top: 0.5rem; }
   table.resp-largo thead { display: none; }
   table.resp-largo, table.resp-largo tbody { display: block; width: 100%; }
@@ -263,12 +289,10 @@ button.mais { margin-top: 0.75rem; }
   .filtros .cota-pill { grid-column: 1 / -1; justify-content: center; }
   main { padding-top: 1rem; }
   .card { padding: 1rem; }
-  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.625rem; }
   .kpi { padding: 0.75rem 0.875rem; }
   .kpi b { font-size: 1.2rem; overflow-wrap: anywhere; }
   .kpi small { overflow-wrap: anywhere; }
-  .cv { height: 17rem; }
-  .cv.alto { height: 26rem; }
+  :root { --cv-h: 17rem; --cv-alto: 26rem; }
   th, td { padding: 0.5rem 0.55rem; }
   .seg { flex-wrap: wrap; }
   .busca input { flex-basis: 100%; max-width: none; }
@@ -361,3 +385,138 @@ button.formato small { font-size: 0.7188rem; line-height: 1.35; color: var(--mut
 }
 @media (prefers-reduced-motion: reduce) { dialog.dialogo[open] { animation: none; } }
 @media print { dialog.dialogo { display: none !important; } }
+
+/* ---------- O que puxar do Sienge (abre ao cadastrar o usuário de API) ---------- */
+dialog.dialogo.sync { width: min(68rem, calc(100vw - 2rem)); }
+dialog.dialogo.sync .dialogo-topo { align-items: flex-start; padding-bottom: 0.625rem; border-bottom: 1px solid var(--line); }
+dialog.dialogo.sync .dialogo-topo p { margin: 0.125rem 0 0; }
+dialog.dialogo.sync .dialogo-corpo { display: block; padding-top: 0.75rem; }
+/* etapas: 1 · Obras → 2 · Período e informações */
+.passos { display: flex; flex-wrap: wrap; gap: 0.375rem; list-style: none; margin: 0.375rem 0 0; padding: 0; }
+.passos li { padding: 0.1875rem 0.625rem; border-radius: 62.4375rem; background: var(--surface-2); color: var(--muted); font-size: 0.75rem; font-weight: 650; }
+.passos li.on { background: var(--brand-soft); color: var(--brand); }
+.passos li.feito { color: var(--pos); }
+.passos li.feito::before { content: '✓ '; }
+.sync-pergunta { margin: 0 0 0.75rem; }
+.sync-pergunta b { font-size: 0.9375rem; }
+.sync-pergunta .bloco { display: block; margin-top: 0.125rem; }
+.sync-passo1 .lista-obras { max-height: min(24rem, 50dvh); }
+.sync-escolhidas { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.375rem 0.75rem;
+  margin: 0 0 0.875rem; padding: 0.5rem 0.75rem; border: 1px solid var(--line); border-radius: 0.625rem; background: var(--surface-2); }
+.sync-grade { display: grid; gap: 1rem; }
+.sync-col { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+/* período e informações na esquerda; a cota (resultado das escolhas) na direita */
+@media (min-width: 900px) { .sync-grade { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 1rem 1.25rem; align-items: start; } }
+.sync-por-obra { margin-top: 0.75rem; }
+.chips { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-bottom: 0.5rem; }
+button.chip { padding: 0.3125rem 0.75rem; border: 1px solid var(--line); border-radius: 62.4375rem; background: var(--surface); color: var(--text);
+  font-size: 0.8125rem; font-weight: 500; box-shadow: var(--shadow); }
+button.chip:hover { border-color: var(--brand); filter: none; }
+button.chip.on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); font-weight: 650; box-shadow: inset 0 0 0 1px var(--brand); }
+.sync-periodo .campos { margin-bottom: 0.25rem; }
+.sync-obras-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.375rem 0.75rem; margin-bottom: 0.5rem; }
+button.mini { padding: 0.25rem 0.625rem; font-size: 0.75rem; }
+.sync-obras-topo input[type=search] { flex: 1 1 14rem; max-width: 24rem; }
+.lista-obras { list-style: none; margin: 0; padding: 0.25rem; min-height: 9rem; max-height: 18rem; overflow: auto;
+  border: 1px solid var(--line); border-radius: 0.625rem; background: var(--surface-2); }
+.lista-obras li label { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.5rem;
+  padding: 0.375rem 0.5rem; border-radius: 0.4375rem; cursor: pointer; font-size: 0.8125rem; }
+.lista-obras li label:hover { background: var(--surface); }
+.lista-obras .nome { overflow-wrap: anywhere; }
+.lista-obras small { white-space: nowrap; }
+.lista-obras input, .modulos input { margin: 0; accent-color: var(--brand); }
+.lista-obras .vazio { padding: 0.75rem; }
+.modulos { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.375rem; }
+.modulos li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 0.25rem 0.625rem; align-items: start;
+  padding: 0.5rem 0.625rem; border: 1px solid var(--line); border-radius: 0.625rem; }
+.modulos li.on { border-color: color-mix(in srgb, var(--brand) 40%, var(--line)); background: color-mix(in srgb, var(--brand-soft) 60%, transparent); }
+.modulos li input { margin-top: 0.1875rem; }
+.modulos small.bloco { display: block; font-size: 0.75rem; }
+.modulos .custo { font-size: 0.75rem; font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sync-cota tr.total td { font-weight: 700; border-top: 1px solid var(--line); }
+.sync-cota .meter { margin-top: 0.75rem; }
+.sync-resumo { font-variant-numeric: tabular-nums; }
+.sync-resumo.neg { color: var(--neg); }
+@media (max-width: 600px) {
+  /* celular: tela cheia como os outros diálogos; o resumo da cota vira uma linha própria em cima dos botões */
+  dialog.dialogo.sync { width: 100vw; }
+  dialog.dialogo.sync .dialogo-acoes { flex-wrap: wrap; }
+  dialog.dialogo.sync .dialogo-acoes .sync-resumo { display: block; flex-basis: 100%; white-space: normal; }
+}
+/* Configurações: conexão + o que puxar, um embaixo do outro */
+.coluna { display: flex; flex-direction: column; gap: 0.875rem; }
+.coluna > .card { margin: 0; }
+.coluna > .card:last-child { flex: 1 1 auto; } /* coluna mais baixa que a vizinha: o último cartão estica (sem fundo vazio embaixo) */
+
+/* ---------- modal grande (detalhe de material, fornecedor, obra) ----------
+   Quase a tela toda; dentro, tudo mais compacto para caber mais sem rolar. O rodapé afasta a barra de rolagem
+   do canto arredondado (senão a seta de baixo fica cortada e o clique nela vira "clique fora"). */
+dialog.dialogo.grande { width: calc(100vw - 1.5rem); max-width: 112rem; height: calc(100dvh - 1.5rem); max-height: none; border-radius: 0.875rem; --cv-h: clamp(10.5rem, 30vh, 21rem); }
+dialog.dialogo.grande .dialogo-caixa { height: 100%; }
+dialog.dialogo.grande .dialogo-topo { align-items: center; padding: 0.625rem 0.875rem 0.625rem 1.125rem; border-bottom: 1px solid var(--line); }
+dialog.dialogo.grande .dialogo-topo h2 { font-size: 1.125rem; }
+.dialogo-titulos { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.125rem 0.75rem; }
+.dialogo-titulos .muted { margin: 0; }
+dialog.dialogo.grande .dialogo-corpo { flex: 1; display: block; padding: 0.75rem 0.875rem; background: var(--bg); scrollbar-gutter: stable; container: area / inline-size; }
+dialog.dialogo.grande .dialogo-corpo .card:last-child { margin-bottom: 0; }
+.dialogo-rodape { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.4375rem 0.875rem 0.4375rem 1.125rem; border-top: 1px solid var(--line); background: var(--surface); }
+.dialogo-rodape button { padding: 0.3125rem 0.875rem; }
+/* conteúdo compacto dentro da modal (valores menores: cabem 6 KPIs numa linha já a partir de 56rem) */
+dialog.dialogo.grande .kpis { gap: 0.5rem; margin-bottom: 0.625rem; }
+@container area (min-width: 56rem) { dialog.dialogo.grande .kpis[data-n="6"] { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+dialog.dialogo.grande .kpi { padding: 0.5rem 0.75rem; }
+dialog.dialogo.grande .kpi b { font-size: 1.125rem; }
+dialog.dialogo.grande .kpi small:last-child { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+dialog.dialogo.grande .cols { gap: 0.625rem; margin-bottom: 0.625rem; }
+dialog.dialogo.grande .card { padding: 0.75rem 0.875rem; margin-bottom: 0.625rem; }
+dialog.dialogo.grande .card > h2 { margin-bottom: 0.375rem; font-size: 0.875rem; }
+dialog.dialogo.grande .card > h2 + .muted { margin: -0.125rem 0 0.375rem; }
+body:has(dialog[open]) { overflow: hidden; } /* a página de trás não rola com a modal aberta */
+@media (max-width: 600px) {
+  dialog.dialogo.grande { width: 100vw; height: 100dvh; max-width: 100vw; border-radius: 0; }
+  dialog.dialogo.grande .dialogo-corpo { padding: 0.625rem; }
+  .dialogo-rodape .muted { display: none; }
+  .dialogo-rodape button { flex: 1; padding: 0.5rem; }
+}
+
+/* linhas que abrem detalhe: nome em destaque + botãozinho de seta que acende ao passar o mouse;
+   a linha ganha um filete azul à esquerda (no cartão do celular, a borda fica azul) */
+tr.clicavel:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+tr.clicavel .link { color: var(--text); font-weight: 600; transition: color .15s; }
+.seta { display: inline-grid; place-items: center; width: 1.25rem; height: 1.25rem; margin-left: 0.375rem; vertical-align: -0.3125rem; border-radius: 50%;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--muted); transition: background .15s, color .15s, border-color .15s, transform .15s; }
+.seta svg { width: 0.75rem; height: 0.75rem; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+tr.clicavel:hover .link, tr.clicavel:focus-visible .link { color: var(--brand); }
+tr.clicavel:hover .seta, tr.clicavel:focus-visible .seta { background: var(--brand); border-color: var(--brand); color: #fff; transform: translateX(2px); }
+tr.clicavel:hover td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
+@container (max-width: 760px) {
+  table.resp tr.clicavel:hover { border-color: var(--brand); }
+  table.resp tr.clicavel:hover td:first-child { box-shadow: none; }
+}
+/* número do insumo no Sienge, antes do nome do material */
+.cod-insumo { display: inline-block; margin-right: 0.4375rem; padding: 0 0.3125rem; border: 1px solid var(--line); border-radius: 0.3125rem;
+  background: var(--surface-2); color: var(--muted); font-size: 0.6875rem; font-weight: 600; line-height: 1.45; letter-spacing: 0;
+  font-variant-numeric: tabular-nums; vertical-align: 0.0625rem; white-space: nowrap; text-decoration: none; }
+.dialogo-titulos h2 .cod-insumo { font-size: 0.8125rem; vertical-align: 0.125rem; }
+/* tabela compacta (fica como tabela em qualquer largura): colunas secundárias só com espaço sobrando */
+@container (max-width: 900px) { table.compacta .col-sec { display: none; } }
+.tag.melhor { background: var(--pos); margin-left: 0.5rem; font-size: 0.6875rem; padding: 1px 0.5rem; vertical-align: middle; }
+/* tabela pequena que fica como tabela em qualquer largura (ex.: preço por fornecedor na modal) */
+table.compacta td { vertical-align: top; }
+table.compacta td:first-child { white-space: normal; }
+table.compacta small.bloco { display: block; font-size: 0.7188rem; }
+@media (max-width: 600px) { table.compacta th, table.compacta td { padding: 0.4375rem 0.375rem; } }
+/* ficha de cadastro (rótulo em cima, valor embaixo) e contagens com etiqueta */
+.ficha { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 9rem), 1fr)); gap: 0.625rem 1rem; margin: 0; }
+.ficha dt { font-size: 0.6875rem; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--muted); }
+.ficha dd { margin: 1px 0 0; overflow-wrap: anywhere; }
+.ficha a { color: var(--brand); }
+h3.sub-card { margin: 1rem 0 0.5rem; font-size: 0.8125rem; color: var(--text); }
+.contagens { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
+.contagens li { display: inline-flex; align-items: center; gap: 0.4375rem; }
+/* itens de ranking que levam ao detalhe */
+.rank-link { display: grid; grid-template-columns: 1fr auto; gap: 0.25rem 0.75rem; align-items: center; color: inherit; text-decoration: none; border-radius: 0.375rem; margin: -0.25rem -0.375rem; padding: 0.25rem 0.375rem; }
+.rank-link:hover, .rank-link:focus-visible { background: var(--surface-2); }
+.rank-link:hover > span:first-child { color: var(--brand); text-decoration: underline; }
+.rank-link > span:last-child { font-variant-numeric: tabular-nums; font-weight: 600; }
+.rank-link .bar { grid-column: 1 / -1; }

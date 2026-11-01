@@ -92,6 +92,8 @@ test('custo da obra: orçado × pendente × atendido, por tipo, serviço e insum
   assert.deepEqual(o.servicos.map(s => [s.edt, s.servico, s.atendido]), [['01.001.000.001', 'Alvenaria de Tijolo Furado', 1400], ['02.001', 'Estrutura', 1200]]);
   const cimento = o.insumos.find(x => x.insumoId === '1')!;
   assert.deepEqual([cimento.qtdOrcada, cimento.qtdPendente, cimento.qtdAtendida], [560.32, 10, 50]);
+  // código do insumo (id) e código auxiliar (resourceCode) seguem para a tela e o Excel
+  assert.deepEqual([cimento.insumoId, cimento.codigo], ['1', 'MA001']);
 });
 
 test('apropriação sem item de orçamento entra em "Sem item de orçamento"', () => {

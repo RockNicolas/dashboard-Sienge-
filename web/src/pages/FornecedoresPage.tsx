@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react';
 import { Bar } from 'react-chartjs-2';
 import type { RankingFornecedor } from '@server/types';
-import { Busca, Card, Grafico, Kpi, Kpis, MostrarMais, paraBusca } from '../components/ui';
+import FornecedorDetalhe from '../components/FornecedorDetalhe';
+import Modal from '../components/Modal';
+import { Busca, Card, Grafico, Kpi, Kpis, linhaClicavel, MostrarMais, NomeLink, paraBusca } from '../components/ui';
 import { useDados } from '../hooks/useDashboard';
-import { brl, brlCurto, celular, dataBR, PALETA, pct, rotuloEixo } from '../lib/format';
+import { useDetalheNaUrl } from '../hooks/useDetalheNaUrl';
+import { brl, brlCurto, celular, dataBR, listaCurta, PALETA, pct, rotuloEixo } from '../lib/format';
 
 type Ordem = 'valor' | 'pedidos';
-const PASSO = celular() ? 15 : 30;
+const PASSO = listaCurta() ? 15 : 30;
 const fmt = (n: number) => n.toLocaleString('pt-BR');
 
 /** Nome do fornecedor + identificação do cadastro de credores do Sienge. */
@@ -14,7 +17,7 @@ function Identificacao({ f }: { f: RankingFornecedor }) {
   const c = f.cadastro;
   return (
     <>
-      <b>{f.fornecedor}</b>
+      <NomeLink><b>{f.fornecedor}</b></NomeLink>
       {c ? (
         <>
           {c.fantasia && c.fantasia !== c.nome && <small className="muted bloco">{c.fantasia}</small>}
@@ -33,6 +36,8 @@ export default function FornecedoresPage() {
   const [ordem, setOrdem] = useState<Ordem>('valor');
   const [busca, setBusca] = useState('');
   const [visiveis, setVisiveis] = useState(PASSO);
+  // fornecedor aberto na modal fica no endereço (?fornecedor=id): Voltar fecha, F5 mantém, dá para mandar o link
+  const { id: aberto, abrir, fechar } = useDetalheNaUrl('fornecedor');
 
   const lista = useMemo(() => {
     const t = paraBusca(busca.trim());
@@ -50,6 +55,8 @@ export default function FornecedoresPage() {
   const pedidos = todos.reduce((s, f) => s + f.pedidos, 0);
   const semCadastro = todos.filter(f => !f.cadastro).length;
   const grafico = (ordem === 'valor' ? todos : [...todos].sort((a, b) => b.pedidos - a.pedidos)).slice(0, 15);
+  const fornecedor = aberto ? todos.find(f => f.fornecedorId === aberto) : undefined;
+  const posicao = fornecedor ? todos.indexOf(fornecedor) + 1 : 0;
 
   return (
     <>
@@ -105,7 +112,7 @@ export default function FornecedoresPage() {
               </thead>
               <tbody>
                 {lista.slice(0, visiveis).map(f => (
-                  <tr key={f.fornecedorId}>
+                  <tr key={f.fornecedorId} {...linhaClicavel(() => abrir(f.fornecedorId), `Ver detalhe de ${f.fornecedor}`)}>
                     <td data-label="Fornecedor"><span className="muted">{f.posicao}º </span><Identificacao f={f} /></td>
                     <td data-label="Valor comprado"><b>{brl(f.valor)}</b></td>
                     <td data-label="Participação">{pct(f.participacao)}</td>
@@ -132,6 +139,15 @@ export default function FornecedoresPage() {
         Fonte: pedidos de compra do Sienge; nome, CNPJ e contato vêm do cadastro de credores (/creditors). Classe pela curva ABC
         (A = até 80% do valor acumulado, B = até 95%, C = o resto). "Em atraso": pedidos com alguma entrega atrasada no Sienge.
       </p>
+
+      <Modal aberto={!!fornecedor} fechar={fechar} titulo={fornecedor?.fornecedor ?? ''}
+        subtitulo={fornecedor && `${posicao}º no ranking · classe ${fornecedor.classe} · ${pct(fornecedor.participacao)} das compras`
+          + `${fornecedor.cadastro?.cnpj ? ` · CNPJ/CPF ${fornecedor.cadastro.cnpj}` : ''}`}>
+        {fornecedor && (
+          <FornecedorDetalhe key={fornecedor.fornecedorId} f={fornecedor} historico={d.historico}
+            compras={d.compras.filter(c => c.fornecedorId === fornecedor.fornecedorId)} cortado={d.comprasTotal > d.compras.length} />
+        )}
+      </Modal>
     </>
   );
 }

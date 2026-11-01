@@ -2,9 +2,9 @@
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ROOT } from '../config/env';
+import { env } from '../config/env';
 
-const DIR = path.join(ROOT, 'data');
+const DIR = env.dataDir;
 fs.mkdirSync(DIR, { recursive: true });
 
 export const db = new DatabaseSync(path.join(DIR, 'painel.db'));

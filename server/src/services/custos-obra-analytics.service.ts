@@ -74,7 +74,7 @@ export const CustosObraAnalytics = {
         .sort((a, b) => peso(b) - peso(a) || a.edt.localeCompare(b.edt));
 
       const listaInsumos: CustoInsumo[] = [...agrupar(l, i => i.insumoId)].map(([insumoId, g]) => ({
-        insumoId, insumo: g[0].insumo, un: g[0].un, categoria: g[0].categoria,
+        insumoId, insumo: g[0].insumo, un: g[0].un, categoria: g[0].categoria, codigo: g.find(i => i.codigo)?.codigo ?? '',
         qtdOrcada: r2(soma(g, i => soma(i.orcamento, o => o.qtd))),
         qtdPendente: r2(soma(g, i => soma(i.pendentes, a => a.qtd))),
         qtdAtendida: r2(soma(g, i => soma(i.atendidas, a => a.qtd))),

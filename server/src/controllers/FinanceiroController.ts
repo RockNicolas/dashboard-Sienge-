@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { ConfigService } from '../services/config.service';
 import { FinanceiroAnalytics } from '../services/financeiro-analytics.service';
+import { SyncConfigService } from '../services/sync-config.service';
 import { SyncService } from '../services/sync.service';
 import type { Agrupamento, FinanceiroResponse } from '../types';
 
@@ -11,8 +12,9 @@ export const FinanceiroController = {
   /** GET /api/financeiro?from&to&obra&agrupar=mes|semana&forcar=1 */
   async dashboard(req: Request, res: Response): Promise<void> {
     const hoje = new Date();
-    // padrão: 12 meses até hoje + 2 meses à frente (vencimentos futuros a pagar/receber)
-    const from = param(req.query.from) ?? iso(new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth() - 11, 1)));
+    // padrão: do início do período escolhido em Configurações (ou 12 meses atrás) + 2 meses à frente (vencimentos futuros)
+    const janela = ConfigService.mock() ? null : SyncConfigService.janela(hoje);
+    const from = param(req.query.from) ?? janela?.de ?? iso(new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth() - 11, 1)));
     const to = param(req.query.to) ?? iso(new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth() + 3, 0)));
     const agrupar: Agrupamento = req.query.agrupar === 'semana' ? 'semana' : 'mes';
 

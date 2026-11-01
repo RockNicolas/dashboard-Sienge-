@@ -23,5 +23,7 @@ export const env = {
   sessaoMs: 12 * 60 * 60 * 1000,
   painelUsuario: e.PAINEL_USUARIO || 'admin',
   painelSenha: e.PAINEL_SENHA,
+  // banco (painel.db) e chave da senha (secret.key); DATA_DIR permite rodar outra instância sem mexer nesses dados
+  dataDir: e.DATA_DIR ? path.resolve(e.DATA_DIR) : path.join(ROOT, 'data'),
   // conexão com o Sienge (subdomínio, usuário, senha, etc.) é configurada no painel — ver config.service.ts
 };

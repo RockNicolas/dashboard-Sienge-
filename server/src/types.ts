@@ -9,7 +9,7 @@ export interface Compra {
   pedido: string;          // formattedPurchaseOrderId (parâmetro 415) ou id
   fornecedorId: string;    // supplierId
   fornecedor: string;      // nome do credor (/creditors/{supplierId}); o pedido não traz o nome
-  insumoId: string;        // resourceId
+  insumoId: string;        // resourceId (Id do insumo = número/código do insumo no Sienge)
   insumo: string;          // resourceDescription
   un: string;              // unitOfMeasure
   qtd: number;             // quantity
@@ -89,7 +89,8 @@ export interface RankingFornecedor {
 
 /** Histórico de compras de um material (insumo) no período. */
 export interface HistoricoMaterial {
-  insumoId: string; insumo: string; un: string;
+  insumoId: string; insumo: string; un: string;   // insumoId = número do insumo no Sienge (resourceId)
+  codigo: string;                 // código auxiliar do insumo (resourceCode), quando cadastrado
   compras: number;                // linhas de pedido
   pedidos: number;
   fornecedores: number;
@@ -144,9 +145,49 @@ export interface DashboardData {
   comprasObra: CompraObra[];
 }
 
+// ---------- sincronização: o que puxar do Sienge (escolhido ao cadastrar o usuário de API) ----------
+/** Período puxado do Sienge: atalhos relativos a hoje (andam com o calendário) ou datas fixas. */
+export type PeriodoSync = 'mes' | 'mes-passado' | '3m' | '6m' | 'ano' | '12m' | 'personalizado';
+
+export interface ConfigSync {
+  periodo: PeriodoSync;
+  de: string; ate: string;          // só no personalizado (ate '' = até hoje)
+  obras: string[] | null;           // null = todas as obras que o usuário de API enxerga
+  fornecedores: boolean;            // cadastro de credores (/creditors) → nome, CNPJ, contato
+  insumosObra: boolean;             // Insumos da Obra (bulk building/resources) → Custos por obra
+  financeiro: boolean;              // contas a pagar/receber e caixa (bulk outcome/income/bank-movement) → Resultado da obra
+}
+
+/** Datas (data do pedido) que o período escolhido representa hoje. */
+export interface JanelaSync { de: string; ate: string }
+
+export interface OpcoesSync {
+  config: ConfigSync | null;        // null = ainda não escolhido
+  obras: Obra[];                    // obras que o usuário de API enxerga no Sienge (/enterprises)
+  aviso: string | null;             // ex.: não conseguiu listar as obras
+  mock: boolean;
+}
+
+/** Requisições que as escolhas vão gastar (REST e bulk-data têm cotas diárias separadas). */
+export interface EstimativaSync {
+  janela: JanelaSync;
+  pedidos: number;                  // pedidos (válidos) das obras escolhidas no período
+  porObra: { id: string; nome: string; pedidos: number; pendentes: number }[]; // pendentes = itens ainda não baixados
+  semObra: number;                  // pedidos sem obra (entram só com "todas as obras")
+  rest: { obras: number; listagem: number; itens: number; fornecedores: number; financeiro: number; total: number };
+  bulk: { insumosObra: number; financeiro: number; total: number };
+  porAtualizacao: { rest: number; bulk: number }; // depois da 1ª carga, a cada atualização
+  gastoNaEstimativa: number;        // REST que esta estimativa gastou listando os pedidos (a sincronização reaproveita)
+  plano: PlanoSienge | null;
+  hoje: { rest: number | null; bulk: number | null }; // quanto ainda dá para usar hoje (null = sem plano)
+  dias: number;                     // dias para terminar a 1ª carga (1 = cabe hoje; 0 = sem plano para calcular)
+  mock: boolean;
+}
+
 export interface DashboardResponse extends DashboardData {
   mock: boolean;
-  de: string; ate: string; // período usado (sem filtro de datas: últimos 12 meses)
+  de: string; ate: string; // período usado (sem filtro de datas: o período sincronizado ou os últimos 12 meses)
+  janela: (JanelaSync & { periodo: PeriodoSync }) | null; // o que vem do Sienge (null = sem escolha: segue o filtro)
   aviso: string | null;    // sincronização com o Sienge falhou ou ficou parcial (cota, conexão...)
   usuario: string;
   atualizado: string;
@@ -209,7 +250,8 @@ export interface TotaisCusto {
 export interface CustoCategoria extends TotaisCusto { categoria: string; nome: string }
 export interface CustoServico extends TotaisCusto { edt: string; servico: string }
 export interface CustoInsumo extends TotaisCusto {
-  insumoId: string; insumo: string; un: string; categoria: string;
+  insumoId: string; insumo: string; un: string; categoria: string;   // insumoId = código do insumo (id)
+  codigo: string;                                                     // código auxiliar (resourceCode)
   qtdOrcada: number; qtdPendente: number; qtdAtendida: number;
 }
 
@@ -435,6 +477,7 @@ export interface ConfigPublica {
   endpointConsumo: string;
   plano: string;           // id do plano contratado ('' = não informado)
   planos: PlanoSienge[];   // opções disponíveis
+  sincronizacao: ConfigSync | null; // o que puxar do Sienge (null = ainda não escolhido)
 }
 
 export interface ConfigEntrada {

@@ -1,6 +1,6 @@
 import type {
-  Agrupamento, ConfigEntrada, ConfigPublica, CustosObraResponse, DashboardResponse, FinanceiroResponse, ImportConfirmacao, ImportListagem,
-  ImportPreview, ImportResultado, QuotaInfo, Sincronizacao, TesteConexao,
+  Agrupamento, ConfigEntrada, ConfigPublica, ConfigSync, CustosObraResponse, DashboardResponse, EstimativaSync, FinanceiroResponse,
+  ImportConfirmacao, ImportListagem, ImportPreview, ImportResultado, JanelaSync, OpcoesSync, QuotaInfo, Sincronizacao, TesteConexao,
 } from '@server/types';
 
 export class NaoAutenticado extends Error {}
@@ -67,6 +67,11 @@ export const api = {
   testarConfig: (c: ConfigEntrada) => req<TesteConexao>('/api/config/testar', json('POST', c)),
   desconectarSienge: () => req<ConfigPublica>('/api/config/conexao', { method: 'DELETE' }),
   quota: () => req<QuotaInfo>('/api/quota'),
+  /** O que puxar do Sienge: escolha salva + obras que o usuário de API enxerga. */
+  sincronizacao: () => req<OpcoesSync>('/api/sincronizacao'),
+  /** Cota que as escolhas gastam (mudar o período lista os pedidos de novo no Sienge). */
+  estimarSincronizacao: (c: ConfigSync) => req<EstimativaSync>('/api/sincronizacao/estimar', json('POST', c)),
+  salvarSincronizacao: (c: ConfigSync) => req<{ config: ConfigSync; janela: JanelaSync }>('/api/sincronizacao', json('PUT', c)),
   importacoes: () => req<ImportListagem>('/api/importar'),
   importarPreview: (arq: File) =>
     req<ImportPreview>('/api/importar/preview', {

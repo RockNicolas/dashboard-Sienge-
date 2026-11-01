@@ -9,7 +9,11 @@ import { SiengeService } from './sienge.service';
 import { BULK_POR_SYNC, FinanceiroService, janelaFinanceira } from './financeiro.service';
 import { FinanceiroModel } from '../models/FinanceiroModel';
 import { QuotaService } from './quota.service';
+import { janelaSync, SyncConfigService } from './sync-config.service';
 import type { Dados, DadosFinanceiros } from '../types';
+
+const diaLocal = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const dataBR = (iso: string) => iso.split('-').reverse().join('/');
 
 // O financeiro usa no máximo esta parte da cota bulk-data do dia; o resto fica para os Insumos da Obra (custos por obra).
 const PARTE_BULK_FINANCEIRO = 0.5;
@@ -38,16 +42,21 @@ export const SyncService = {
     if (ConfigService.mock()) return { dados: MockService.carregar(), aviso: null };
     if (!ConfigService.completa()) return { dados: DadosModel.ler(de, ate), aviso: null }; // só dados locais (relatórios importados)
 
-    const k = `${de}|${ate}`;
+    // Com a escolha feita em Configurações (O que puxar do Sienge), o Sienge só é consultado no período e nas obras
+    // escolhidos; o filtro da tela lê o que já veio. Sem escolha, sincroniza o próprio período do filtro (como antes).
+    const escolha = SyncConfigService.obter();
+    const alvo = escolha ? janelaSync(escolha) : { de, ate };
+    const op = { obras: escolha?.obras ?? null, fornecedores: escolha?.fornecedores ?? true };
+    const k = `${alvo.de}|${alvo.ate}|${op.obras?.join(',') ?? '*'}|${op.fornecedores ? 1 : 0}`;
     if (forcar || Date.now() - (sincronizado.get(k) ?? 0) > env.cacheMs) {
       let p = emAndamento.get(k);
       if (!p) {
-        p = SiengeService.carregar(de, ate)
+        p = SiengeService.carregar(alvo.de, alvo.ate, op)
           .then(({ dados, pedidos, pendentes, avisos: extras }) => {
             // grava mesmo parcial: os itens já baixados ficam guardados e a próxima sincronização completa o resto
             transacao(() => {
-              DadosModel.substituirPeriodo(dados, de, ate);
-              SincronizacaoModel.registrar(dados, de, ate);
+              DadosModel.substituirPeriodo(dados, alvo.de, alvo.ate);
+              SincronizacaoModel.registrar(dados, alvo.de, alvo.ate);
             });
             const msgs = [
               ...(pendentes
@@ -71,7 +80,11 @@ export const SyncService = {
       }
       sincronizado.set(k, Date.now()); // não insiste a cada clique; tenta de novo quando o cache vencer ou no "↻ Sienge"
     }
-    return { dados: DadosModel.ler(de, ate), aviso: avisos.get(k) ?? null };
+    // filtro da tela além do período escolhido: avisa que essa parte não vem do Sienge
+    const fora = escolha && (de < alvo.de || (ate > alvo.ate && alvo.ate < diaLocal()))
+      ? `Do Sienge vem só o período escolhido em Configurações (${dataBR(alvo.de)} a ${dataBR(alvo.ate)}); fora dele aparece só o que já estava salvo.`
+      : null;
+    return { dados: DadosModel.ler(de, ate), aviso: [avisos.get(k), fora].filter(Boolean).join(' ') || null };
   },
 
   /**
@@ -83,6 +96,12 @@ export const SyncService = {
     if (ConfigService.mock()) return { dados: MockService.financeiro(), aviso: null, atualizado: null };
     const obras = DadosModel.obras();
     if (!ConfigService.completa()) return { dados: FinanceiroModel.ler(de, ate, obras), aviso: null, atualizado: FinanceiroModel.ultima() };
+    if (SyncConfigService.obter()?.financeiro === false) {
+      return {
+        dados: FinanceiroModel.ler(de, ate, obras), atualizado: FinanceiroModel.ultima(),
+        aviso: 'O financeiro está desligado em Configurações → O que puxar do Sienge: aparece só o que já estava salvo.',
+      };
+    }
 
     const limiteBulk = QuotaService.info().bulkLimite * PARTE_BULK_FINANCEIRO;
     const intervalo = Math.max(env.cacheMs, limiteBulk ? (24 * 3600_000 * BULK_POR_SYNC) / limiteBulk : 0);

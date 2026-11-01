@@ -39,8 +39,10 @@ Sem credenciais do Sienge (ou com demonstração marcada) usa dados de demonstra
 - **Visão geral** — total comprado, pedidos, ticket médio, fornecedores, materiais, obras atendidas; compras por mês e tops.
 - **Suprimentos**
   1. **Histórico de compras** — cada item de pedido de compra com os campos do Sienge (pedido, item, situação, autorizado,
-     entrega em atraso, obra, fornecedor, código/detalhe/marca do insumo, quantidade, preço unitário, preço líquido, valor,
-     comprador, condição de pagamento) e, por material, último preço, menor/médio/maior e preço médio de cada mês.
+     entrega em atraso, obra, fornecedor, nº do insumo, código auxiliar/detalhe/marca do insumo, quantidade, preço unitário,
+     preço líquido, valor, comprador, condição de pagamento) e, por material, último preço, menor/médio/maior e preço médio de
+     cada mês. O **nº do insumo** (`resourceId` do pedido; `id` nos Insumos da Obra) aparece antes do nome do material em todas
+     as telas, na busca, no PDF e no Excel (coluna "Cód. insumo"); o `resourceCode` é o "código auxiliar".
   2. **Fornecedores** — identificação pelo cadastro de credores (nome, fantasia, CNPJ/CPF, cidade, telefone, e-mail) e ranking
      por valor ou nº de pedidos, com curva ABC, ticket médio, obras atendidas e pedidos com entrega em atraso.
   3. **Custos por obra** — material comprado por obra (pedidos) e, dos Insumos da Obra, orçado × pendente (pedidos e contratos
@@ -48,6 +50,17 @@ Sem credenciais do Sienge (ou com demonstração marcada) usa dados de demonstra
   4. **Resultado da obra** — receitas (contas a receber) − despesas (contas a pagar) por obra, margem, recebido × pago e despesas
      por plano financeiro.
 - **Configurações** fica no rodapé do menu.
+- **Detalhe em modal:** clique em um material (Histórico de compras), fornecedor (Fornecedores) ou obra (Custos por obra) — ou
+  nos tops da Visão geral — para abrir o detalhe numa modal que ocupa quase a tela toda (no celular, tela cheia). O item
+  aberto fica no endereço (`?material=`, `?fornecedor=`, `?obra=`): Voltar, Esc, botão Fechar ou clique fora fecham, F5 mantém
+  aberto e dá para mandar o link. O rodapé da modal mantém as setas da barra de rolagem longe do canto arredondado.
+  - Material: indicadores de preço, preço pago em cada compra, preço por fornecedor (do mais barato ao mais caro) e as compras.
+  - Fornecedor: cadastro de credores, situação dos pedidos, obras atendidas, compras por mês, materiais com preço × média
+    geral e as compras.
+  - Obra: orçado × pendente × atendido, por tipo de insumo (com composição do custo realizado), por serviço e por insumo.
+- **Layout sem buracos:** cartões lado a lado (`.cols`) ficam da mesma altura e o gráfico cresce até ocupar o cartão; quando
+  não cabem lado a lado, cada um ocupa a linha inteira. Os KPIs escolhem as colunas pela quantidade (6 → 6, 3+3 ou 2+2+2;
+  5 → 5, 3+2 ou 2+2+1), sem deixar um sozinho na última linha.
 - **Filtros (topo):** **Período** com atalhos (Últimos 12 meses, Este mês, Mês passado, Este ano) e a **obra** aplicam na hora
   em todas as telas; datas digitadas (De/Até, "Personalizado") são aplicadas no botão **Aplicar**. Cada período novo é uma
   consulta ao Sienge (pedidos com data do pedido no intervalo). Os filtros continuam depois do F5, e o PDF traz período e obra
@@ -74,6 +87,8 @@ estão **comentadas** em `web/src/routes.tsx`: para voltar com uma, descomente o
 - O servidor escuta só em `127.0.0.1` (use `HOST=0.0.0.0` para abrir na rede). Há cabeçalhos de segurança (CSP, nosniff, X-Frame-Options)
   e o cookie de sessão ganha `Secure` em HTTPS. Atrás de proxy, defina `TRUST_PROXY=true`.
 - Troque a senha inicial do `.env` antes de expor o painel.
+- `DATA_DIR` (opcional) muda a pasta do banco e da chave (`data/` por padrão) — útil para rodar outra instância de teste
+  sem mexer nos dados (junto com `PORT` e, para um Sienge de teste, `SIENGE_BASE_URL`).
 - `npm test` roda os testes automatizados (análises, distribuição do consumo por mês); `npm run typecheck` confere os tipos.
 
 ## Login e histórico
@@ -112,6 +127,19 @@ Menu **Financeiro**: Financeiro geral, Contas a pagar, Contas a receber e Caixa 
   `server/src/services/planos.ts`, conforme a documentação do Sienge); o limite diário vem do plano e, ao atingi-lo, o painel para de chamar
   o Sienge e usa os dados já salvos. O plano escolhido é conferido com o limite que o Sienge devolve no cabeçalho `x-ratelimit-limit-day`
   (aviso na tela e no "Testar conexão" se não bater).
+- **O que puxar do Sienge:** ao salvar o usuário de API (1º cadastro ou troca de usuário/senha) abre uma modal em 2 passos:
+  1. **Obras** — as obras que o usuário de API enxerga no Sienge (`/enterprises`, 1 requisição). Marque uma, várias ou todas:
+     só as escolhidas vêm do Sienge.
+  2. **Período e informações** — período (Este mês, Mês passado, Últimos 3/6/12 meses, Desde o começo do ano ou datas
+     personalizadas; os atalhos andam com o calendário), o que vem (compras — sempre; cadastro dos fornecedores; Insumos da
+     Obra; financeiro) e a **cota estimada**: requisições REST e bulk da 1ª carga, item a item, comparadas com o plano e com o que
+     resta hoje, e em quantos dias a 1ª carga termina se não couber hoje. Para estimar, o painel lista os pedidos do período das
+     obras escolhidas (obra a obra pelo filtro `buildingId` quando sai mais barato); a sincronização logo depois reaproveita essa
+     lista por 30 min, sem gastar de novo.
+  A escolha fica no card "O que puxar do Sienge" (dá para alterar). Com ela, o Sienge só é consultado no período e nas obras
+  escolhidos: o período do topo começa em **Período sincronizado**, o filtro de obra mostra só as escolhidas, e mudar o filtro de
+  período só lê o que já veio (fora do período escolhido aparece um aviso). Sem escolha, o painel segue o filtro de cada tela, como
+  antes. "Desconectar" apaga a escolha junto com as credenciais.
 
 ## Importar relatórios em PDF (menu "Importar relatórios")
 
@@ -146,7 +174,8 @@ seu tenant, ajuste só as funções `normalizar*`.
   quantidade × preço líquido (`netPrice`; sem ele, `unitPrice`). Pedidos **cancelados** e **reprovados** ficam de fora.
 - Credores: a 1ª página de `/creditors` diz quantos existem; se a lista inteira custar menos que buscar um a um, baixa a lista.
   Usa no máximo metade do que sobra da cota REST, para os itens dos pedidos também andarem.
-- Insumos da Obra: sem filtro de obra, busca as obras com mais compras no período (até 12); com filtro, a obra escolhida.
+- Insumos da Obra: com obras escolhidas em "O que puxar do Sienge", busca essas obras; sem escolha, as obras com mais compras
+  no período (até 12); com filtro de obra no topo, a obra do filtro.
   A cota **bulk-data** é dividida: metade para o financeiro, o resto para os Insumos da Obra (no plano Free, o financeiro passa
   a sincronizar a cada ~14h).
 - Consumo: o endpoint padrão `/stock-movements` **não existe** na API pública do Sienge; como as telas de consumo estão ocultas,

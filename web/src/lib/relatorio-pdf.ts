@@ -84,6 +84,9 @@ function opcoes(horizontal: boolean, legenda: boolean, eixoMoeda = true): ChartC
 }
 
 const encurtar = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+/** Número do insumo no Sienge (quando há) antes do nome: "103 – Brita 1". */
+const ehCod = (id: string) => /^\d+$/.test(id);
+const comCod = (id: string, nome: string) => (ehCod(id) ? `${id} – ${nome}` : nome);
 const hex = (h: string): Rgb => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
 
 class Documento {
@@ -301,7 +304,7 @@ function secaoGeral(pdf: Documento, d: DashboardResponse, c: CustosObraResponse 
     [[{ t: 'Top 5 fornecedores' }, { t: 'Valor', dir: true }, { t: 'Part.', dir: true }],
       d.fornecedores.slice(0, 5).map(x => [encurtar(x.fornecedor, 30), brl(x.valor), pct(x.participacao)])],
     [[{ t: 'Top 5 materiais' }, { t: 'Valor', dir: true }, { t: 'Compras', dir: true }],
-      d.historico.slice(0, 5).map(x => [encurtar(x.insumo, 30), brl(x.valor), x.compras])],
+      d.historico.slice(0, 5).map(x => [encurtar(comCod(x.insumoId, x.insumo), 30), brl(x.valor), x.compras])],
     [[{ t: 'Compras por obra' }, { t: 'Comprado', dir: true }, { t: '%', dir: true }],
       d.comprasObra.slice(0, 5).map(o => [encurtar(o.obra, 30), brl(o.valor), pct(o.participacao)])],
   );
@@ -311,10 +314,10 @@ function secaoCompras(pdf: Documento, d: DashboardResponse) {
   pdf.secao('Histórico de compras', 'Itens dos pedidos de compra do Sienge (cancelados e reprovados ficam de fora) · preço = preço unitário líquido');
   pdf.subtitulo('Materiais comprados');
   pdf.tabela([
-    { t: 'Material' }, { t: 'Un.' }, { t: 'Compras', dir: true }, { t: 'Quantidade', dir: true }, { t: 'Valor', dir: true },
-    { t: 'Último preço', dir: true }, { t: 'Data', dir: true }, { t: 'Menor', dir: true }, { t: 'Médio', dir: true },
+    { t: 'Cód.', dir: true, largura: 14 }, { t: 'Material' }, { t: 'Un.' }, { t: 'Compras', dir: true }, { t: 'Quantidade', dir: true },
+    { t: 'Valor', dir: true }, { t: 'Último preço', dir: true }, { t: 'Data', dir: true }, { t: 'Menor', dir: true }, { t: 'Médio', dir: true },
     { t: 'Maior', dir: true }, { t: 'Variação', dir: true },
-  ], d.historico.map(m => [m.insumo, m.un, m.compras, num(m.qtd), brl(m.valor), brl2(m.ultimoPreco), dataBR(m.ultimaData),
+  ], d.historico.map(m => [ehCod(m.insumoId) ? m.insumoId : '—', m.insumo, m.un, m.compras, num(m.qtd), brl(m.valor), brl2(m.ultimoPreco), dataBR(m.ultimaData),
     brl2(m.precoMin), brl2(m.precoMedio), brl2(m.precoMax), pct(m.variacao)]));
   pdf.subtitulo('Itens dos pedidos de compra');
   const itens = d.compras.slice(0, LIMITE_ITENS);
@@ -322,7 +325,7 @@ function secaoCompras(pdf: Documento, d: DashboardResponse) {
     { t: 'Data', largura: 16 }, { t: 'Pedido', largura: 13 }, { t: 'Situação', largura: 20 }, { t: 'Obra' }, { t: 'Fornecedor' },
     { t: 'Material' }, { t: 'Quantidade', dir: true }, { t: 'Preço líquido', dir: true }, { t: 'Valor', dir: true }, { t: 'Comprador' },
   ], itens.map(x => [dataBR(x.data), x.pedido, SITUACAO[x.situacao] ?? x.situacao, x.obra || 'Sem obra', x.fornecedor,
-    x.insumo, `${num(x.qtd)} ${x.un}`, brl2(x.preco), brl2(x.valor), x.comprador || '—']));
+    comCod(x.insumoId, x.insumo), `${num(x.qtd)} ${x.un}`, brl2(x.preco), brl2(x.valor), x.comprador || '—']));
   if (d.comprasTotal > itens.length)
     pdf.nota(`Mostrando os ${itens.length} itens mais recentes de ${d.comprasTotal.toLocaleString('pt-BR')}. A lista completa sai na exportação em Excel.`);
 }

@@ -49,7 +49,7 @@ function Topo() {
   const periodoMudou = f.from !== filtros.from || f.to !== filtros.to;
   // obra e atalho de período aplicam na hora; datas digitadas esperam o "Aplicar" (cada período novo é uma consulta ao Sienge)
   const escolherObra = (obra: string) => { const n = { ...f, obra }; setF(n); aplicar(n); };
-  const atalhos = atalhosPeriodo();
+  const atalhos = atalhosPeriodo(new Date(), !!dados?.janela);
   const atalho = atalhoDe(atalhos, filtros.from, filtros.to);
   const escolherAtalho = (id: string) => {
     const p = atalhos.find(x => x.id === id);

@@ -26,6 +26,9 @@ export const eixoBRL = { ticks: { callback: (v: string | number) => brlCurto(Num
 /** Listas longas começam menores no celular (cada linha vira um cartão). */
 export const celular = () => innerWidth < 760;
 
+/** Abaixo desta largura (celular e tablet) as tabelas longas viram cartões, bem mais altos: as listas começam menores. */
+export const listaCurta = () => innerWidth < 1000;
+
 export const meses = (...series: { mes: string }[][]) => [...new Set(series.flat().map(x => x.mes))].sort();
 export const porMes = (serie: { mes: string; valor: number }[], ms: string[]) =>
   ms.map(m => serie.find(x => x.mes === m)?.valor ?? 0);

@@ -121,6 +121,7 @@ function historicoMateriais(compras: Compra[]): HistoricoMaterial[] {
     });
     return {
       insumoId, insumo: l[0].insumo, un: l[0].un,
+      codigo: l.find(x => x.codigo)?.codigo ?? '',
       compras: l.length,
       pedidos: new Set(l.map(x => x.pedido)).size,
       fornecedores: new Set(l.map(x => x.fornecedorId)).size,

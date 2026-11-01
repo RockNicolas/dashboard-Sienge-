@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
+import { Children, type ReactNode } from 'react';
 
-export const Card = ({ titulo, children }: { titulo?: string; children: ReactNode }) => (
-  <div className="card">{titulo && <h2>{titulo}</h2>}{children}</div>
+/** `largo`: lado a lado com outro cartão, pede mais largura (tabela com muitas colunas). */
+export const Card = ({ titulo, children, largo }: { titulo?: string; children: ReactNode; largo?: boolean }) => (
+  <div className={largo ? 'card largo' : 'card'}>{titulo && <h2>{titulo}</h2>}{children}</div>
 );
 
 export const Kpi = ({ titulo, valor, sub, cor }: { titulo: string; valor: ReactNode; sub?: ReactNode; cor?: string }) => (
@@ -10,11 +11,23 @@ export const Kpi = ({ titulo, valor, sub, cor }: { titulo: string; valor: ReactN
   </div>
 );
 
-export const Kpis = ({ children }: { children: ReactNode }) => <div className="kpis">{children}</div>;
+/** A quantidade (data-n) decide as colunas no CSS: as linhas saem sempre completas (6 → 3+3, 5 → 3+2, 4 → 2+2). */
+export const Kpis = ({ children }: { children: ReactNode }) => {
+  const n = Children.toArray(children).length;
+  return <div className="kpis" data-n={n} style={{ '--n': n } as React.CSSProperties}>{children}</div>;
+};
 
-/** Área do gráfico. `alto`: para rankings com muitas barras (ex.: top 15 fornecedores). */
-export const Grafico = ({ children, alto }: { children: ReactNode; alto?: boolean }) =>
-  <div className={alto ? 'cv alto' : 'cv'}>{children}</div>;
+/**
+ * Área do gráfico. `alto`: para rankings com muitas barras (ex.: top 15 fornecedores).
+ * `linhas`: gráfico de barras deitadas com essa quantidade de categorias — a altura acompanha a quantidade
+ * (`porLinha` rem por categoria), como a tabela ao lado; lado a lado, ele ainda cresce até a altura do vizinho.
+ */
+export const Grafico = ({ children, alto, linhas, porLinha = 2 }: { children: ReactNode; alto?: boolean; linhas?: number; porLinha?: number }) => (
+  <div className={alto ? 'cv alto' : 'cv'}
+    style={linhas ? ({ '--cv-h': `clamp(9rem, ${2.5 + linhas * porLinha}rem, 40rem)` } as React.CSSProperties) : undefined}>
+    {children}
+  </div>
+);
 
 /** Botão para listas longas: mostra mais `passo` linhas por clique. */
 export const MostrarMais = ({ visiveis, total, passo, onMais }: { visiveis: number; total: number; passo: number; onMais: () => void }) =>
@@ -42,14 +55,47 @@ export const paraBusca = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '
 /** `sec`: coluna secundária — some em telas médias; no celular volta dentro do cartão. */
 export interface Coluna<T> { t: string; f: (r: T) => ReactNode; sec?: boolean }
 
-/** Tabela que vira cartões no celular (classe `resp` + rótulo de cada célula em data-label). */
-export function Tabela<T>({ colunas, linhas }: { colunas: Coluna<T>[]; linhas: T[] }) {
+/** Propriedades de uma linha que abre detalhe: clique, Enter/Espaço no teclado e foco visível. */
+export function linhaClicavel(abrir: () => void, titulo?: string) {
+  return {
+    className: 'clicavel',
+    tabIndex: 0,
+    title: titulo,
+    onClick: abrir,
+    onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrir(); } },
+  };
+}
+
+/**
+ * Número do insumo no Sienge (resourceId nos pedidos, id nos Insumos da Obra), antes do nome do material.
+ * Só aparece quando é mesmo um número (relatórios importados sem código usam o nome como id).
+ */
+export const CodInsumo = ({ id }: { id: string }) =>
+  (/^\d+$/.test(id) ? <span className="cod-insumo" title={`Insumo ${id} no Sienge`}>{id}</span> : null);
+
+/** Nome que abre detalhe: nome em destaque + botãozinho de seta (acende ao passar o mouse na linha). */
+export const NomeLink = ({ children }: { children: ReactNode }) => (
+  <>
+    <span className="link">{children}</span>
+    <span className="seta" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" /></svg></span>
+  </>
+);
+
+/**
+ * Tabela que vira cartões em espaço estreito (classe `resp` + rótulo de cada célula em data-label).
+ * `cartoes={false}`: tabela pequena (poucas colunas) que cabe em qualquer tela e fica sempre como tabela.
+ * `aoClicar`: cada linha abre um detalhe (modal).
+ */
+export function Tabela<T>({ colunas, linhas, cartoes = true, aoClicar, podeClicar, tituloLinha }: {
+  colunas: Coluna<T>[]; linhas: T[]; cartoes?: boolean;
+  aoClicar?: (r: T) => void; podeClicar?: (r: T) => boolean; tituloLinha?: (r: T) => string;
+}) {
   return (
-    <table className="resp">
+    <table className={cartoes ? 'resp' : 'compacta'}>
       <thead><tr>{colunas.map(c => <th key={c.t} className={c.sec ? 'col-sec' : undefined}>{c.t}</th>)}</tr></thead>
       <tbody>
         {linhas.map((r, i) => (
-          <tr key={i}>
+          <tr key={i} {...(aoClicar && (podeClicar?.(r) ?? true) ? linhaClicavel(() => aoClicar(r), tituloLinha?.(r)) : {})}>
             {colunas.map(c => <td key={c.t} data-label={c.t} className={c.sec ? 'col-sec' : undefined}>{c.f(r)}</td>)}
           </tr>
         ))}

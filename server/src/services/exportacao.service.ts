@@ -2,7 +2,7 @@
 // e, opcionalmente, uma aba "Dashboard" com indicadores e gráficos nativos do Excel ligados aos dados.
 // Usa os mesmos cálculos das telas, então os números batem com o painel.
 import ExcelJS from 'exceljs';
-import type { Compra, CustosObraResponse, FinanceiroData, Obra } from '../types';
+import type { Compra, CustosObraResponse, FinanceiroData, JanelaSync, Obra } from '../types';
 import { DadosModel } from '../models/DadosModel';
 import { AnalyticsService } from './analytics.service';
 import { CustosObraService } from './custos-obra.service';
@@ -10,6 +10,7 @@ import { nomeCategoria } from './custos-obra-analytics.service';
 import { inserirGraficos, PALETA, type Grafico } from './excel-graficos';
 import { FinanceiroAnalytics } from './financeiro-analytics.service';
 import { ConfigService } from './config.service';
+import { SyncConfigService } from './sync-config.service';
 import { SyncService } from './sync.service';
 
 export const SECOES = ['geral', 'compras', 'fornecedores', 'custos', 'resultado'] as const;
@@ -40,14 +41,19 @@ const F_PCT = '0.0%';
 const F_NUM = '#,##0.##';
 const F_INT = '#,##0';
 const F_DATA = 'dd/mm/yyyy';
+/** Número do insumo no Sienge: vai como número (ordena e filtra certo; formato geral, sem separador de milhar). */
+const codInsumo = (id: string) => (/^\d+$/.test(id) ? Number(id) : id);
 
 const COR = { titulo: 'FF111827', texto: 'FF374151', suave: 'FF6B7280', fundo: 'FFF3F6FB', marca: 'FF2A78D6' };
 
-/** Período padrão igual ao das telas: compras até hoje; financeiro até 2 meses à frente (vencimentos futuros). */
-export function periodos(op: Pick<OpcoesExportacao, 'from' | 'to'>, hoje = new Date()) {
-  const de = op.from || iso(new Date(hoje.getFullYear(), hoje.getMonth() - 11, 1));
+/**
+ * Período padrão igual ao das telas: o escolhido em Configurações (`janela`) ou os últimos 12 meses; compras até hoje,
+ * financeiro até 2 meses à frente (vencimentos futuros).
+ */
+export function periodos(op: Pick<OpcoesExportacao, 'from' | 'to'>, hoje = new Date(), janela: JanelaSync | null = null) {
+  const de = op.from || janela?.de || iso(new Date(hoje.getFullYear(), hoje.getMonth() - 11, 1));
   return {
-    compras: { from: de, to: op.to || iso(hoje) },
+    compras: { from: de, to: op.to || janela?.ate || iso(hoje) },
     financeiro: { from: de, to: op.to || iso(new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth() + 3, 0))) },
   };
 }
@@ -63,7 +69,7 @@ interface Relatorio {
 }
 
 async function montar(op: OpcoesExportacao): Promise<Relatorio> {
-  const p = periodos(op);
+  const p = periodos(op, new Date(), ConfigService.mock() ? null : SyncConfigService.janela());
   const { dados } = await SyncService.obterDados(p.compras.from, p.compras.to);
   const filtros = { ...p.compras, obraId: op.obraId };
   const quer = (s: Secao) => op.secoes.includes(s);
@@ -146,18 +152,19 @@ function abasCompras(wb: ExcelJS.Workbook, r: Relatorio, info: string) {
   aba(wb, 'Itens de pedido', 'Histórico de compras — itens dos pedidos de compra', info, [
     { nome: 'Data', formato: F_DATA, largura: 11 }, { nome: 'Pedido', largura: 10 }, { nome: 'Item', largura: 7 },
     { nome: 'Situação', largura: 20 }, { nome: 'Autorizado', largura: 11 }, { nome: 'Entrega em atraso', largura: 12 },
-    { nome: 'Obra', largura: 26 }, { nome: 'Fornecedor', largura: 32 }, { nome: 'Código', largura: 11 }, { nome: 'Material', largura: 30 },
-    { nome: 'Detalhe', largura: 16 }, { nome: 'Marca', largura: 14 }, { nome: 'Unidade', largura: 9 },
+    { nome: 'Obra', largura: 26 }, { nome: 'Fornecedor', largura: 32 }, { nome: 'Cód. insumo', largura: 11 }, { nome: 'Material', largura: 30 },
+    { nome: 'Cód. auxiliar', largura: 12 }, { nome: 'Detalhe', largura: 16 }, { nome: 'Marca', largura: 14 }, { nome: 'Unidade', largura: 9 },
     { nome: 'Quantidade', formato: F_NUM, largura: 12 }, { nome: 'Preço unitário', formato: F_BRL, largura: 14 },
     { nome: 'Preço líquido', formato: F_BRL, largura: 14 }, { nome: 'Valor', formato: F_BRL, largura: 15 },
     { nome: 'Comprador', largura: 16 }, { nome: 'Condição de pagamento', largura: 18 },
   ], r.compras.map(c => [
     data(c.data), c.pedido, c.item || null, SITUACAO[c.situacao] ?? c.situacao, c.autorizado ? 'Sim' : 'Não', c.atrasado ? 'Sim' : 'Não',
-    c.obra || 'Sem obra', c.fornecedor, c.codigo, c.insumo, c.detalhe, c.marca, c.un, c.qtd, c.precoUnitario, c.preco, c.valor,
+    c.obra || 'Sem obra', c.fornecedor, codInsumo(c.insumoId), c.insumo, c.codigo, c.detalhe, c.marca, c.un, c.qtd, c.precoUnitario, c.preco, c.valor,
     c.comprador, c.condicaoPagamento,
   ]));
   aba(wb, 'Materiais', 'Histórico de compras — por material', info, [
-    { nome: 'Material', largura: 32 }, { nome: 'Unidade', largura: 9 }, { nome: 'Compras', formato: F_INT, largura: 10 },
+    { nome: 'Cód. insumo', largura: 11 }, { nome: 'Material', largura: 32 }, { nome: 'Cód. auxiliar', largura: 12 },
+    { nome: 'Unidade', largura: 9 }, { nome: 'Compras', formato: F_INT, largura: 10 },
     { nome: 'Pedidos', formato: F_INT, largura: 10 }, { nome: 'Fornecedores', formato: F_INT, largura: 12 },
     { nome: 'Quantidade', formato: F_NUM, largura: 12 }, { nome: 'Valor', formato: F_BRL, largura: 16 },
     { nome: 'Último preço', formato: F_BRL, largura: 14 }, { nome: 'Data do último', formato: F_DATA, largura: 13 },
@@ -165,7 +172,7 @@ function abasCompras(wb: ExcelJS.Workbook, r: Relatorio, info: string) {
     { nome: 'Preço médio', formato: F_BRL, largura: 13 }, { nome: 'Maior preço', formato: F_BRL, largura: 13 },
     { nome: 'Variação', formato: F_PCT, largura: 10 },
   ], r.painel.historico.map(m => [
-    m.insumo, m.un, m.compras, m.pedidos, m.fornecedores, m.qtd, m.valor, m.ultimoPreco, data(m.ultimaData), m.ultimoFornecedor,
+    codInsumo(m.insumoId), m.insumo, m.codigo, m.un, m.compras, m.pedidos, m.fornecedores, m.qtd, m.valor, m.ultimoPreco, data(m.ultimaData), m.ultimoFornecedor,
     m.precoMin, m.precoMedio, m.precoMax, m.variacao / 100,
   ]));
 }
@@ -210,10 +217,11 @@ function abasCustos(wb: ExcelJS.Workbook, r: Relatorio, info: string) {
     [{ nome: 'Obra', largura: 30 }, { nome: 'Item (EDT)', largura: 16 }, { nome: 'Serviço', largura: 40 }, ...custo],
     obras.flatMap(o => o.servicos.map(s => [o.obra, s.edt, s.servico, ...valores(s)])), 'FF6250D6');
   aba(wb, 'Custos por insumo', 'Custos por obra e insumo', info, [
-    { nome: 'Obra', largura: 30 }, { nome: 'Insumo', largura: 32 }, { nome: 'Tipo', largura: 16 }, { nome: 'Unidade', largura: 9 },
+    { nome: 'Obra', largura: 30 }, { nome: 'Cód. insumo', largura: 11 }, { nome: 'Insumo', largura: 32 }, { nome: 'Cód. auxiliar', largura: 12 },
+    { nome: 'Tipo', largura: 16 }, { nome: 'Unidade', largura: 9 },
     { nome: 'Qtd. orçada', formato: F_NUM, largura: 12 }, { nome: 'Qtd. pendente', formato: F_NUM, largura: 12 },
     { nome: 'Qtd. atendida', formato: F_NUM, largura: 12 }, ...custo,
-  ], obras.flatMap(o => o.insumos.map(i => [o.obra, i.insumo, nomeCategoria(i.categoria), i.un, i.qtdOrcada, i.qtdPendente,
+  ], obras.flatMap(o => o.insumos.map(i => [o.obra, codInsumo(i.insumoId), i.insumo, i.codigo, nomeCategoria(i.categoria), i.un, i.qtdOrcada, i.qtdPendente,
     i.qtdAtendida, ...valores(i)])), 'FF6250D6');
 }
 

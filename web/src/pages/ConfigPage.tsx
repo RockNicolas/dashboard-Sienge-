@@ -1,10 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Bar } from 'react-chartjs-2';
-import type { PlanoSienge, TesteConexao } from '@server/types';
+import type { ConfigSync, PlanoSienge, TesteConexao } from '@server/types';
 import { api } from '../api/client';
+import SincronizacaoDialog from '../components/SincronizacaoDialog';
 import { Card, Grafico, Kpi, Kpis, Tabela } from '../components/ui';
 import { useDashboard } from '../hooks/useDashboard';
-import { PALETA } from '../lib/format';
+import { dataBR, PALETA } from '../lib/format';
+import { nomePeriodoSync } from '../lib/periodo';
 
 interface Form {
   usarMock: boolean; subdominio: string; usuario: string; senha: string;
@@ -12,12 +14,16 @@ interface Form {
 }
 
 const n = (v: number) => v.toLocaleString('pt-BR');
+const simNao = (v: boolean) => (v ? 'Sim' : <span className="muted">Não (desligado)</span>);
 
 export default function ConfigPage() {
   const { dados, filtros, aplicar } = useDashboard();
   const [f, setF] = useState<Form | null>(null);
   const [planos, setPlanos] = useState<PlanoSienge[]>([]);
   const [senhaDefinida, setSenhaDefinida] = useState(false);
+  const [salvo, setSalvo] = useState({ subdominio: '', usuario: '' }); // credenciais gravadas (para saber se mudaram)
+  const [escolha, setEscolha] = useState<ConfigSync | null>(null);  // o que puxar do Sienge
+  const [sync, setSync] = useState({ aberto: false, cadastro: false });
   const [teste, setTeste] = useState<TesteConexao | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; texto: string } | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -26,6 +32,8 @@ export default function ConfigPage() {
     void api.config().then(c => {
       setSenhaDefinida(c.senhaDefinida);
       setPlanos(c.planos);
+      setSalvo({ subdominio: c.subdominio, usuario: c.usuario });
+      setEscolha(c.sincronizacao);
       setF({
         usarMock: c.usarMock, subdominio: c.subdominio, usuario: c.usuario, senha: '',
         endpointConsumo: c.endpointConsumo, plano: c.plano,
@@ -48,15 +56,28 @@ export default function ConfigPage() {
   const salvar = async (e: FormEvent) => {
     e.preventDefault();
     setOcupado(true); setMsg(null);
+    // usuário de API novo ou trocado: pergunta o que puxar antes de gastar a cota
+    const credenciaisMudaram = f.subdominio.trim().toLowerCase() !== salvo.subdominio || f.usuario.trim() !== salvo.usuario || !!f.senha;
     try {
       const c = await api.salvarConfig(entrada());
       setSenhaDefinida(c.senhaDefinida);
+      setSalvo({ subdominio: c.subdominio, usuario: c.usuario });
+      setEscolha(c.sincronizacao);
       setF({ ...f, senha: '' });
+      const abrir = !c.mockEfetivo && c.senhaDefinida && (credenciaisMudaram || !c.sincronizacao);
       setMsg({ ok: true, texto: c.mockEfetivo ? 'Salvo. Painel em modo demonstração.' : 'Salvo. Painel usando dados do Sienge.' });
-      aplicar({ ...filtros }); // recarrega com a nova configuração
+      if (abrir) setSync({ aberto: true, cadastro: true });
+      else aplicar({ ...filtros }); // recarrega com a nova configuração
     } catch (err) {
       setMsg({ ok: false, texto: (err as Error).message });
     } finally { setOcupado(false); }
+  };
+
+  /** Escolha salva na modal: volta o filtro para o período escolhido (padrão) e já busca no Sienge. */
+  const escolhaSalva = (c: ConfigSync) => {
+    setEscolha(c);
+    setMsg({ ok: true, texto: 'Pronto: o painel vai puxar do Sienge o período e as obras escolhidos.' });
+    aplicar({ from: '', to: '', obra: '' });
   };
 
   const desconectar = async () => {
@@ -76,9 +97,15 @@ export default function ConfigPage() {
 
   const nivel = q.limite && q.pct >= 90 ? 'neg' : q.limite && q.pct >= 70 ? 'warn' : '';
   const headers = q.headers ? Object.entries(q.headers).map(([chave, valor]) => ({ chave, valor })) : [];
+  // nomes das obras escolhidas (o filtro de obra do topo já vem só com elas)
+  const nomesObras = escolha?.obras?.map(id => dados.obrasDisponiveis.find(o => o.id === id)?.nome ?? `Obra ${id}`) ?? [];
 
   return (
+    <>
+    <SincronizacaoDialog aberto={sync.aberto} cadastro={sync.cadastro}
+      fechar={() => setSync({ aberto: false, cadastro: false })} aoSalvar={escolhaSalva} />
     <div className="cols">
+      <div className="coluna">
       <Card titulo="Conexão com o Sienge">
         <form onSubmit={salvar}>
           <div className="form">
@@ -124,9 +151,57 @@ export default function ConfigPage() {
         </form>
       </Card>
 
+      <Card titulo="O que puxar do Sienge">
+        {escolha ? (
+          <dl className="ficha">
+            <div>
+              <dt>Obras</dt>
+              <dd title={nomesObras.join(', ')}>
+                {escolha.obras ? (nomesObras.length <= 3 ? nomesObras.join(', ') : `${nomesObras.length} obras escolhidas`) : 'Todas'}
+              </dd>
+            </div>
+            <div>
+              <dt>Período</dt>
+              <dd>
+                {nomePeriodoSync(escolha.periodo)}
+                {escolha.periodo === 'personalizado' && ` (${dataBR(escolha.de)} a ${escolha.ate ? dataBR(escolha.ate) : 'hoje'})`}
+                {dados.janela && escolha.periodo !== 'personalizado' && <small className="muted bloco">{dataBR(dados.janela.de)} a {dataBR(dados.janela.ate)}</small>}
+              </dd>
+            </div>
+            <div><dt>Cadastro dos fornecedores</dt><dd>{simNao(escolha.fornecedores)}</dd></div>
+            <div><dt>Insumos da Obra</dt><dd>{simNao(escolha.insumosObra)}</dd></div>
+            <div><dt>Financeiro</dt><dd>{simNao(escolha.financeiro)}</dd></div>
+          </dl>
+        ) : (
+          <p className="muted">
+            Ainda não escolhido: o painel busca no Sienge o período do filtro de cada tela, em todas as obras.
+            Escolha as obras e o período para controlar quanto da cota diária isso gasta.
+          </p>
+        )}
+        <div className="acoes">
+          <button type="button" className="sec" disabled={ocupado} onClick={() => setSync({ aberto: true, cadastro: false })}>
+            {escolha ? 'Alterar obras, período e informações' : 'Escolher obras, período e informações'}
+          </button>
+          {dados.mock && <span className="hint">Em demonstração dá para simular; vale quando o usuário de API for cadastrado.</span>}
+        </div>
+      </Card>
+      </div>
+
       {!q.conectado ? (
         <Card titulo="Cota diária da API">
-          <p className="muted">Nenhum usuário de API conectado. Preencha a conexão ao lado e salve para acompanhar a cota e conferir o plano.</p>
+          <p className="muted">
+            Nenhum usuário de API conectado. Cada chamada ao Sienge conta 1 requisição e a contagem zera todo dia;
+            REST e bulk-data são cotas separadas, conforme o plano contratado:
+          </p>
+          <Tabela cartoes={false} linhas={planos} colunas={[
+            { t: 'Plano', f: p => (p.id === f.plano ? <b>{p.nome} (escolhido)</b> : p.nome) },
+            { t: 'REST por dia', f: p => n(p.rest) },
+            { t: 'Bulk por dia', f: p => n(p.bulk) },
+          ]} />
+          <p className="muted">
+            Ao salvar a conexão, o painel pergunta quais obras acompanhar e depois o período e as informações,
+            mostrando quanto isso gasta da cota antes de buscar.
+          </p>
         </Card>
       ) : <div className="stack">
         <Card titulo="Cota diária da API">
@@ -163,5 +238,6 @@ export default function ConfigPage() {
         )}
       </div>}
     </div>
+    </>
   );
 }

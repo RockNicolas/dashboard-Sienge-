@@ -11,6 +11,7 @@ import { BULK_POR_SYNC } from './financeiro.service';
 import { MockService } from './mock.service';
 import { QuotaService } from './quota.service';
 import { bulkUrl, get } from './sienge.service';
+import { SyncConfigService } from './sync-config.service';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Raw = Record<string, any>;
@@ -62,18 +63,23 @@ export function normalizarInsumoObra(r: Raw): InsumoObra {
   };
 }
 
-/** Obras a mostrar: a do filtro; sem filtro, as com mais compras (pela obra do pedido) no período. */
-function obrasAlvo({ from, to, obraId }: Filtros): Obra[] {
+/**
+ * Obras a mostrar: a do filtro; sem filtro, as obras escolhidas em Configurações (todas, das com mais compras para as
+ * com menos) ou, sem escolha, as com mais compras (pela obra do pedido) no período, até MAX_OBRAS.
+ */
+function obrasAlvo({ from, to, obraId }: Filtros, escolhidas: string[] | null): Obra[] {
   const nomes = new Map(DadosModel.obras().map(o => [o.id, o.nome]));
   if (obraId) return [{ id: obraId, nome: nomes.get(obraId) ?? `Obra ${obraId}` }];
   const valor = new Map<string, { nome: string; v: number }>();
+  for (const id of escolhidas ?? []) valor.set(id, { nome: nomes.get(id) ?? `Obra ${id}`, v: 0 });
   for (const c of DadosModel.ler(from, to).compras) {
-    if (!c.obraId) continue;
+    if (!c.obraId || (escolhidas && !valor.has(c.obraId))) continue;
     const x = valor.get(c.obraId) ?? { nome: c.obra || nomes.get(c.obraId) || `Obra ${c.obraId}`, v: 0 };
     x.v += c.valor;
     valor.set(c.obraId, x);
   }
-  return [...valor].sort((a, b) => b[1].v - a[1].v).slice(0, MAX_OBRAS).map(([id, x]) => ({ id, nome: x.nome }));
+  const ordem = [...valor].sort((a, b) => b[1].v - a[1].v);
+  return (escolhidas ? ordem : ordem.slice(0, MAX_OBRAS)).map(([id, x]) => ({ id, nome: x.nome }));
 }
 
 /** Atualiza do Sienge as obras vencidas, sem passar da cota bulk-data (deixa espaço para o financeiro). */
@@ -113,9 +119,12 @@ export const CustosObraService = {
       const insumos = MockService.insumosObra().filter(i => !filtros.obraId || i.obraId === filtros.obraId);
       return { mock: true, aviso: null, obras: CustosObraAnalytics.custos(insumos, filtros), aguardando: [] };
     }
-    const alvo = obrasAlvo(filtros);
+    const escolha = SyncConfigService.obter();
+    const alvo = obrasAlvo(filtros, escolha?.obras ?? null);
     let aviso: string | null = null;
-    if (ConfigService.completa() && alvo.length) {
+    if (escolha?.insumosObra === false) {
+      aviso = 'Os Insumos da Obra estão desligados em Configurações → O que puxar do Sienge: aparece só o que já estava salvo.';
+    } else if (ConfigService.completa() && alvo.length) {
       const k = `${alvo.map(o => o.id).join(',')}|${forcar}`;
       let p = emAndamento.get(k);
       if (!p) {
