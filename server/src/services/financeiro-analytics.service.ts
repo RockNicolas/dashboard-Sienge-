@@ -19,7 +19,7 @@ export function fatia(obras: Rateio[], obraId?: string): number {
 }
 
 /** Distribui o lançamento entre as obras do rateio (sem rateio = "Sem obra"). */
-function partes(obras: Rateio[]): { id: string; nome: string; f: number }[] {
+export function partes(obras: Rateio[]): { id: string; nome: string; f: number }[] {
   if (!obras.length) return [{ ...SEM_OBRA, f: 1 }];
   const total = obras.reduce((s, x) => s + x.pct, 0);
   return obras.map(o => ({ id: o.id, nome: o.nome || `Obra ${o.id}`, f: total > 0 ? o.pct / 100 : 1 / obras.length }));

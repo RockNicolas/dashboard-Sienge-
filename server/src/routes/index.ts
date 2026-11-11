@@ -1,5 +1,6 @@
 import express, { Router } from 'express';
 import { AuthController } from '../controllers/AuthController';
+import { ComparativoController } from '../controllers/ComparativoController';
 import { ConfigController } from '../controllers/ConfigController';
 import { CustosObraController } from '../controllers/CustosObraController';
 import { ImportacaoController } from '../controllers/ImportacaoController';
@@ -20,6 +21,7 @@ routes.get('/me', requireAuth, AuthController.me);
 routes.get('/dashboard', requireAuth, asyncHandler(DashboardController.dashboard));
 routes.get('/historico', requireAuth, DashboardController.historico);
 routes.get('/financeiro', requireAuth, asyncHandler(FinanceiroController.dashboard));
+routes.get('/comparativos', requireAuth, ComparativoController.comparativo);
 routes.get('/custos-obra', requireAuth, asyncHandler(CustosObraController.custos));
 routes.get('/exportar/excel', requireAuth, asyncHandler(ExportarController.excel));
 routes.get('/config', requireAuth, ConfigController.obter);

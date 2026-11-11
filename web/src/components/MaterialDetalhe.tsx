@@ -3,7 +3,9 @@ import { Line } from 'react-chartjs-2';
 import type { Compra, HistoricoMaterial } from '@server/types';
 import { TabelaItens } from './TabelaCompras';
 import { Card, Grafico, Kpi, Kpis, MostrarMais, Tabela } from './ui';
-import { brl, brlPreco, celular, dataBR, listaCurta, num, PALETA, pct } from '../lib/format';
+import { LIMITES, statusPreco, statusVariacaoPreco, textoStatus } from '../lib/status';
+import { RegraGrafico } from './Status';
+import { brl, brlPreco, celular, COR, corStatus, dataBR, listaCurta, num, pct } from '../lib/format';
 
 const PASSO = listaCurta() ? 20 : 50;
 const dataCurta = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(2, 4)}`;
@@ -17,6 +19,8 @@ interface PorFornecedor {
 export default function MaterialDetalhe({ m, compras, cortado }: { m: HistoricoMaterial; compras: Compra[]; cortado: boolean }) {
   const [visiveis, setVisiveis] = useState(PASSO);
   const emOrdem = useMemo(() => [...compras].sort((a, b) => a.data.localeCompare(b.data)), [compras]);
+  // cada compra: preço acima ou abaixo do preço médio do material
+  const precos = emOrdem.map(c => statusPreco(c.preco, m.precoMedio));
 
   // preço médio ponderado de cada fornecedor, do mais barato para o mais caro
   const porFornecedor = useMemo(() => {
@@ -40,24 +44,27 @@ export default function MaterialDetalhe({ m, compras, cortado }: { m: HistoricoM
   return (
     <>
       <Kpis>
-        <Kpi cor={PALETA[0]} titulo="Último preço" valor={brlPreco(m.ultimoPreco)} sub={`${dataBR(m.ultimaData)} · ${m.ultimoFornecedor}`} />
-        <Kpi cor={PALETA[3]} titulo="Preço médio" valor={brlPreco(m.precoMedio)} sub={`por ${m.un} (média ponderada)`} />
-        <Kpi cor={PALETA[2]} titulo="Menor preço" valor={brlPreco(m.precoMin)} sub={quemVendeu(m.precoMin) || '—'} />
-        <Kpi cor={PALETA[7]} titulo="Maior preço" valor={brlPreco(m.precoMax)} sub={quemVendeu(m.precoMax) || '—'} />
-        <Kpi cor={PALETA[6]} titulo="Variação" valor={pct(m.variacao)} sub="do menor ao maior preço" />
-        <Kpi cor={PALETA[1]} titulo="Total comprado" valor={brl(m.valor)} sub={`${num(m.qtd)} ${m.un} em ${m.compras} compras`} />
+        <Kpi titulo="Último preço" valor={brlPreco(m.ultimoPreco)} sub={`${dataBR(m.ultimaData)} · ${m.ultimoFornecedor}`} />
+        <Kpi titulo="Preço médio" valor={brlPreco(m.precoMedio)} sub={`por ${m.un} (média ponderada)`} />
+        <Kpi titulo="Menor preço" valor={brlPreco(m.precoMin)} sub={quemVendeu(m.precoMin) || '—'} />
+        <Kpi titulo="Maior preço" valor={brlPreco(m.precoMax)} sub={quemVendeu(m.precoMax) || '—'} />
+        <Kpi titulo="Variação de preço" valor={pct(m.variacao)} sub="do menor ao maior preço pago" status={m.compras > 1 ? statusVariacaoPreco(m.variacao) : null} />
+        <Kpi titulo="Total comprado" valor={brl(m.valor)} sub={`${num(m.qtd)} ${m.un} em ${m.compras} compras`} />
       </Kpis>
 
       <div className="cols">
         <Card titulo="Preço pago em cada compra">
-          <p className="muted">Cada ponto é uma compra (passe o mouse para ver fornecedor e pedido). A linha tracejada é o preço médio.</p>
+          <p className="muted">Cada ponto é uma compra, com a cor de quanto o preço ficou acima ou abaixo do preço médio (linha tracejada). Passe o mouse para ver fornecedor e pedido.</p>
           <Grafico>
             <Line
               data={{
                 labels: emOrdem.map(c => dataCurta(c.data)),
                 datasets: [
-                  { label: `Preço líquido (R$/${m.un})`, data: emOrdem.map(c => c.preco), borderColor: PALETA[0], backgroundColor: PALETA[0], pointRadius: 3.5, pointHoverRadius: 6, tension: 0.2 },
-                  { label: 'Preço médio', data: emOrdem.map(() => m.precoMedio), borderColor: PALETA[3], borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 0 },
+                  {
+                    label: `Preço líquido (R$/${m.un})`, data: emOrdem.map(c => c.preco), borderColor: COR.referencia, tension: 0.2,
+                    pointBackgroundColor: precos.map(s => corStatus(s)), pointBorderColor: precos.map(s => corStatus(s)), pointRadius: 5, pointHoverRadius: 7,
+                  },
+                  { label: 'Preço médio', data: emOrdem.map(() => m.precoMedio), borderColor: COR.neutroMedio, borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 0 },
                 ],
               }}
               options={{
@@ -66,7 +73,9 @@ export default function MaterialDetalhe({ m, compras, cortado }: { m: HistoricoM
                   tooltip: {
                     callbacks: {
                       label: ctx => `${ctx.dataset.label}: ${brlPreco(Number(ctx.parsed.y))}`,
-                      afterLabel: ctx => (ctx.datasetIndex === 0 ? `${emOrdem[ctx.dataIndex].fornecedor} · pedido ${emOrdem[ctx.dataIndex].pedido} · ${num(emOrdem[ctx.dataIndex].qtd)} ${m.un}` : ''),
+                      afterLabel: ctx => (ctx.datasetIndex === 0
+                        ? [`${emOrdem[ctx.dataIndex].fornecedor} · pedido ${emOrdem[ctx.dataIndex].pedido} · ${num(emOrdem[ctx.dataIndex].qtd)} ${m.un}`, textoStatus(precos[ctx.dataIndex])]
+                        : ''),
                     },
                   },
                 },
@@ -77,6 +86,10 @@ export default function MaterialDetalhe({ m, compras, cortado }: { m: HistoricoM
               }}
             />
           </Grafico>
+          <RegraGrafico regras={{
+            bom: 'no preço médio ou abaixo', melhorar: `até ${LIMITES.precoAcimaDaMedia[1]}% acima`,
+            atencao: `até ${LIMITES.precoAcimaDaMedia[2]}% acima`, ruim: `mais de ${LIMITES.precoAcimaDaMedia[2]}% acima`,
+          }} />
         </Card>
 
         <Card titulo="Preço por fornecedor">

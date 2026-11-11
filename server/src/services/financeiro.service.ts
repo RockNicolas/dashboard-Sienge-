@@ -103,7 +103,8 @@ export function normalizarContaReceber(r: Raw, hoje: string): ContaReceber {
   };
 }
 
-// Tipo da operação não é documentado; trata D/S (débito/saída) como saída. Conferir com dados reais.
+// bankMovementOperationType: 'E' = entrada, 'S' = saída (conferido com dados reais). O valor vem positivo; negativo é
+// estorno, que tem o efeito contrário (estorno de saída = dinheiro voltando). Por isso a saída só inverte o sinal.
 const ehSaida = (tipo: unknown) => /^(d|s)/i.test(txt(tipo));
 
 export function normalizarMovimento(r: Raw): MovimentoBancario {
@@ -116,7 +117,7 @@ export function normalizarMovimento(r: Raw): MovimentoBancario {
     data: dia(r.bankMovementDate),
     empresaId: id(r.companyId), empresa: txt(r.companyName),
     conta: txt(r.accountNumber),
-    valor: v < 0 || !ehSaida(r.bankMovementOperationType) ? v : -v,
+    valor: ehSaida(r.bankMovementOperationType) ? -v : v,
     operacao: txt(r.bankMovementOperationName),
     historico: txt(r.bankMovementHistoricName),
     conciliado: r.bankMovementReconcile === 'S',
@@ -191,12 +192,13 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 /**
  * Janela fixa sincronizada (não depende do filtro da tela, para não gastar cota a cada mudança de período):
  * vencimentos de 12 meses atrás até 6 meses à frente; movimentos de 12 meses atrás até hoje;
- * títulos (/bills, filtra por emissão) de 15 meses atrás até hoje — cobre quem foi emitido antes de vencer.
+ * títulos (/bills, filtra por emissão) dos últimos 2 meses (os demais ficam com o valor somado das parcelas).
  */
 export function janelaFinanceira(hoje = new Date()) {
   const vencDe = iso(new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth() - 12, 1)));
   const vencAte = iso(new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth() + 7, 0)));
-  const titDe = iso(new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth() - 15, 1)));
+  // títulos: só os emitidos nos últimos 2 meses (com volume real, 15 meses passaria de 50 páginas e acabaria a cota REST)
+  const titDe = iso(new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth() - 2, 1)));
   return { vencDe, vencAte, movDe: vencDe, movAte: iso(hoje), titDe, titAte: iso(hoje) };
 }
 
@@ -250,7 +252,15 @@ export const FinanceiroService = {
 
   /** Títulos a pagar emitidos no período (REST /bills): observação, valor total, nº de parcelas, pedido, contrato, origem. */
   async titulos(de: string, ate: string, cfg = ConfigService.efetiva()): Promise<TituloInfo[]> {
-    return (await listarTudo(cfg, '/bills', { startDate: de, endDate: ate })).map(normalizarTitulo);
+    // página a página, parando antes de comer a folga da cota do dia (o que faltar vem na próxima sincronização)
+    const out: TituloInfo[] = [];
+    for (let offset = 0; QuotaService.disponivel() >= FOLGA_REST_TITULOS; offset += 200) {
+      const j = await get(cfg, '/bills', { startDate: de, endDate: ate, limit: 200, offset });
+      const rows: Raw[] = j.results ?? [];
+      out.push(...rows.map(normalizarTitulo));
+      if (!rows.length || offset + 200 >= (j.resultSetMetadata?.count ?? 0)) break;
+    }
+    return out;
   },
 
   /** Parcelas a pagar com vencimento no período (selectionType D), com pagamentos e rateios. 1 requisição BULK. */
@@ -283,7 +293,7 @@ export const FinanceiroService = {
 
   /** Saldo de cada conta na data (usa o último saldo se não houver movimento no dia). REST paginado. */
   async saldos(data = hojeIso(), cfg = ConfigService.efetiva()): Promise<SaldoConta[]> {
-    const rows = await listarTudo(cfg, '/accounts-balances', { balanceDate: data, showLastBalanceIfNotExistBalance: 'true' });
+    const rows = await listarTudo(cfg, '/accounts-balances', { balanceDate: data, showLastBalanceIfNotExistBalance: 'S' });
     return rows.map(normalizarSaldo);
   },
 };

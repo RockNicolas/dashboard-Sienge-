@@ -193,6 +193,67 @@ export interface DashboardResponse extends DashboardData {
   atualizado: string;
   obrasDisponiveis: Obra[];
   quota: QuotaInfo;
+  anterior: ResumoAnterior | null;   // mesmo tamanho de período, logo antes do filtro (setas ▲▼ da Visão geral)
+}
+
+/** Totais de compras do período imediatamente anterior ao filtro, para as variações dos cards. */
+export interface ResumoAnterior {
+  de: string; ate: string;
+  comprado: number; pedidos: number; ticketMedio: number;
+  fornecedores: number; insumos: number; obrasComCompra: number;
+  semDados: boolean;       // o período anterior não foi sincronizado (comparar não faz sentido)
+}
+
+// ---------- comparativos: semanal / mensal / anual ----------
+export type GrupoComparativo = 'semana' | 'mes' | 'ano';
+
+/** Um dos períodos comparados. */
+export interface PeriodoComparado {
+  de: string; ate: string;       // AAAA-MM-DD
+  rotulo: string;                // "nov/26", "03/11 a 09/11/26", "2026"
+  semDados: boolean;             // fora do que foi sincronizado do Sienge
+}
+
+/** Um número no período atual, no anterior e no mesmo período do ano passado (null no anual). */
+export interface Metrica { atual: number; anterior: number; anoAnterior: number | null }
+
+export interface PontoComparativo {
+  periodo: string;               // chave do período (AAAA-MM, AAAA-MM-DD da segunda-feira ou AAAA)
+  rotulo: string;
+  comprado: number; compradoAnoAnterior: number | null;
+  receitas: number; despesas: number;
+}
+
+export interface FornecedorComparado { id: string; nome: string; atual: number; anterior: number; diferenca: number }
+
+export interface MaterialComparado {
+  insumoId: string; insumo: string; un: string;
+  qtdAtual: number; qtdAnterior: number;
+  precoAtual: number | null; precoAnterior: number | null;   // preço médio (valor ÷ quantidade); null sem compra no período
+  valorAtual: number; valorAnterior: number;
+  impactoPreco: number | null;   // (preço atual − anterior) × qtd atual: quanto o preço encareceu/barateou a compra
+}
+
+export interface ObraComparada {
+  obraId: string; obra: string;
+  compradoAtual: number; compradoAnterior: number;
+  receitasAtual: number; receitasAnterior: number;
+  despesasAtual: number; despesasAnterior: number;
+}
+
+export interface ComparativoResponse {
+  mock: boolean;
+  agrupar: GrupoComparativo;
+  ref: string;                   // data de referência (o período atual é o que contém esta data)
+  parcial: boolean;              // período atual ainda em andamento: os anteriores são cortados no mesmo ponto
+  periodos: { atual: PeriodoComparado; anterior: PeriodoComparado; anoAnterior: PeriodoComparado | null };
+  compras: { comprado: Metrica; pedidos: Metrica; ticketMedio: Metrica; itens: Metrica; fornecedores: Metrica; materiais: Metrica };
+  resultado: { receitas: Metrica; despesas: Metrica; resultado: Metrica; recebido: Metrica; pago: Metrica };
+  serie: PontoComparativo[];     // últimos 12 meses / 12 semanas / 5 anos até o período atual
+  fornecedores: FornecedorComparado[];
+  materiais: MaterialComparado[];
+  obras: ObraComparada[];
+  avisos: string[];              // ex.: período anterior não sincronizado
 }
 
 export interface Sincronizacao {

@@ -1,13 +1,19 @@
 import { Children, type ReactNode } from 'react';
+import type { Status } from '../lib/status';
+import { Sinal } from './Status';
 
 /** `largo`: lado a lado com outro cartão, pede mais largura (tabela com muitas colunas). */
 export const Card = ({ titulo, children, largo }: { titulo?: string; children: ReactNode; largo?: boolean }) => (
   <div className={largo ? 'card largo' : 'card'}>{titulo && <h2>{titulo}</h2>}{children}</div>
 );
 
-export const Kpi = ({ titulo, valor, sub, cor }: { titulo: string; valor: ReactNode; sub?: ReactNode; cor?: string }) => (
-  <div className="kpi" style={cor ? ({ '--accent': cor } as React.CSSProperties) : undefined}>
-    <small>{titulo}</small><b>{valor}</b><small>{sub ?? ' '}</small>
+/**
+ * Indicador. Sem `status` é só informação (neutro). Com `status`, a faixa lateral e o selo mostram se está
+ * bom, pode melhorar, perto de dar problema ou ruim (ver lib/status.ts).
+ */
+export const Kpi = ({ titulo, valor, sub, status }: { titulo: string; valor: ReactNode; sub?: ReactNode; status?: Status | null }) => (
+  <div className={status ? `kpi st-${status.nivel}` : 'kpi'}>
+    <small>{titulo}{status && <Sinal s={status} curto />}</small><b>{valor}</b><small>{sub ?? ' '}</small>
   </div>
 );
 
@@ -35,8 +41,9 @@ export const MostrarMais = ({ visiveis, total, passo, onMais }: { visiveis: numb
     ? <button className="sec mais" onClick={onMais}>Mostrar mais {Math.min(passo, total - visiveis)} (de {total.toLocaleString('pt-BR')})</button>
     : null);
 
-export const Barra = ({ v, max }: { v: number; max: number }) => (
-  <div className="bar"><i style={{ width: `${Math.min(100, (v / (max || 1)) * 100)}%` }} /></div>
+/** Barrinha de ranking: cinza (só informação); com `status`, ganha a cor do nível. */
+export const Barra = ({ v, max, status }: { v: number; max: number; status?: Status | null }) => (
+  <div className={status ? `bar st-${status.nivel}` : 'bar'} title={status?.motivo}><i style={{ width: `${Math.min(100, (v / (max || 1)) * 100)}%` }} /></div>
 );
 
 /** Campo de busca com um texto ao lado (ex.: "mostrando 200 de 1.500"). */

@@ -57,8 +57,10 @@ test('contas a receber: cliente, recebimentos e unidade', () => {
 
 test('movimento bancário: saída fica negativa', () => {
   const base = { bankMovementId: 1, bankMovementDate: '2026-10-02', accountNumber: '123-4', bankMovementAmount: 600, bankMovementReconcile: 'S' };
-  assert.equal(normalizarMovimento({ ...base, bankMovementOperationType: 'D' }).valor, -600);
-  assert.equal(normalizarMovimento({ ...base, bankMovementOperationType: 'C' }).valor, 600);
+  // tipos reais do Sienge: S = saída, E = entrada; valor negativo = estorno (efeito contrário)
+  assert.equal(normalizarMovimento({ ...base, bankMovementOperationType: 'S' }).valor, -600);
+  assert.equal(normalizarMovimento({ ...base, bankMovementOperationType: 'E' }).valor, 600);
+  assert.equal(normalizarMovimento({ ...base, bankMovementOperationType: 'S', bankMovementAmount: -150 }).valor, 150);
   const m = normalizarMovimento({ ...base, billId: 900, creditorName: 'Cimento SA' });
   assert.equal(m.conciliado, true);
   assert.equal(m.tituloId, '900');

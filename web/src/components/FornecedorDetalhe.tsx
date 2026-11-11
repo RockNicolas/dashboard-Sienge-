@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Bar } from 'react-chartjs-2';
 import type { Compra, HistoricoMaterial, RankingFornecedor } from '@server/types';
+import { GraficoPorPeriodo } from './GraficoPorPeriodo';
 import { TabelaItens } from './TabelaCompras';
-import { Card, CodInsumo, Grafico, Kpi, Kpis, MostrarMais, Tabela } from './ui';
-import { brl, brlPreco, dataBR, eixoBRL, listaCurta, num, PALETA, pct, rotuloPeriodo, SITUACAO_PEDIDO } from '../lib/format';
+import { Card, CodInsumo, Kpi, Kpis, MostrarMais, Tabela } from './ui';
+import { mesAtual, statusAtraso } from '../lib/status';
+import { brl, brlPreco, dataBR, listaCurta, num, pct, rotuloPeriodo, SITUACAO_PEDIDO } from '../lib/format';
 
 const PASSO = listaCurta() ? 20 : 50;
 const MAX_OBRAS = 8;
@@ -51,13 +52,13 @@ export default function FornecedorDetalhe({ f, compras, historico, cortado }: {
   return (
     <>
       <Kpis>
-        <Kpi cor={PALETA[0]} titulo="Valor comprado" valor={brl(f.valor)} sub={`${pct(f.participacao)} das compras · classe ${f.classe}`} />
-        <Kpi cor={PALETA[6]} titulo="Pedidos" valor={fmt(f.pedidos)} sub={`ticket médio ${brl(f.ticketMedio)}`} />
-        <Kpi cor={PALETA[3]} titulo="Materiais" valor={fmt(f.itens)} sub="diferentes comprados" />
-        <Kpi cor={PALETA[2]} titulo="Obras atendidas" valor={fmt(f.obras)} sub="com pedido deste fornecedor" />
-        <Kpi cor={f.atrasados ? PALETA[7] : PALETA[5]} titulo="Pedidos em atraso" valor={fmt(f.atrasados)}
+        <Kpi titulo="Valor comprado" valor={brl(f.valor)} sub={`${pct(f.participacao)} das compras · classe ${f.classe}`} />
+        <Kpi titulo="Pedidos" valor={fmt(f.pedidos)} sub={`ticket médio ${brl(f.ticketMedio)}`} />
+        <Kpi titulo="Materiais" valor={fmt(f.itens)} sub="diferentes comprados" />
+        <Kpi titulo="Obras atendidas" valor={fmt(f.obras)} sub="com pedido deste fornecedor" />
+        <Kpi titulo="Pedidos em atraso" valor={fmt(f.atrasados)} status={statusAtraso(f.atrasados, f.pedidos)}
           sub={f.pedidos ? `${pct(Math.round((f.atrasados / f.pedidos) * 1000) / 10)} dos pedidos` : '—'} />
-        <Kpi cor={PALETA[1]} titulo="Última compra" valor={f.ultimaCompra ? dataBR(f.ultimaCompra) : '—'} sub="data do pedido" />
+        <Kpi titulo="Última compra" valor={f.ultimaCompra ? dataBR(f.ultimaCompra) : '—'} sub="data do pedido" />
       </Kpis>
 
       <div className="cols">
@@ -91,12 +92,7 @@ export default function FornecedorDetalhe({ f, compras, historico, cortado }: {
         {/* o gráfico cresce até a altura do cadastro ao lado */}
         <Card titulo="Compras por mês">
           {mensal.length ? (
-            <Grafico>
-              <Bar
-                data={{ labels: mensal.map(m => rotuloPeriodo(m.mes)), datasets: [{ label: 'Comprado', data: mensal.map(m => m.valor), backgroundColor: PALETA[0] }] }}
-                options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: eixoBRL, x: { grid: { display: false } } } }}
-              />
-            </Grafico>
+            <GraficoPorPeriodo pontos={mensal.map(m => ({ periodo: m.mes, rotulo: rotuloPeriodo(m.mes), valor: m.valor }))} emAndamento={mesAtual()} />
           ) : <p className="muted">Sem compras no período.</p>}
         </Card>
       </div>

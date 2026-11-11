@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import type { CompraObra, CustoObra, TotaisCusto } from '@server/types';
 import Modal from '../components/Modal';
+import { Sinal, ValorStatus } from '../components/Status';
 import { Card, CodInsumo, Grafico, Kpi, Kpis, NomeLink, Tabela, type Coluna } from '../components/ui';
 import { useCustosObra } from '../hooks/useCustosObra';
 import { useDados } from '../hooks/useDashboard';
 import { useDetalheNaUrl } from '../hooks/useDetalheNaUrl';
-import { brl, brlCurto, dataHora, eixoBRL, num, PALETA, pct, rotuloEixo } from '../lib/format';
+import { brl, brlCurto, COR, corStatus, dataHora, eixoBRL, num, PALETA, pct, rotuloEixo } from '../lib/format';
+import { statusOrcamento } from '../lib/status';
 
 const LIMITE = 25;
 // tipos de insumo do Sienge (campo `category`)
@@ -15,7 +17,12 @@ const TIPOS: Record<string, string> = {
   FUELS_AND_LUBRICANTS: 'Combustíveis e lubrificantes', MAINTENANCE_MATERIAL: 'Material de manutenção',
 };
 const realizado = (t: TotaisCusto) => (t.orcado > 0 ? pct(Math.round((t.atendido / t.orcado) * 1000) / 10) : '—');
-const saldo = (v: number) => <span className={v < 0 ? 'neg' : ''}>{brl(v)}</span>;
+/** Saldo do orçamento pintado conforme quanto do orçado já está comprometido (ver lib/status.ts). */
+const saldo = (t: TotaisCusto, obraTemOrcamento?: boolean) => <ValorStatus s={statusOrcamento(t, obraTemOrcamento)}>{brl(t.saldo)}</ValorStatus>;
+const situacao = (t: TotaisCusto, obraTemOrcamento?: boolean) => {
+  const s = statusOrcamento(t, obraTemOrcamento);
+  return s ? <Sinal s={s} /> : <span className="muted" title="Sem itens de orçamento no Sienge para comparar">sem orçamento</span>;
+};
 const opcoes = { responsive: true, maintainAspectRatio: false, scales: { y: eixoBRL, x: { grid: { display: false } } } } as const;
 // por obra: barras deitadas (o nome da obra cabe no eixo; encurta no celular e aparece inteiro no tooltip).
 // Ao lado da tabela, o gráfico cresce junto com ela: cada obra a mais é uma barra a mais.
@@ -27,14 +34,15 @@ const opcoesObras = {
   },
 };
 
-/** Colunas orçado × pendente × atendido, comuns às tabelas. */
-const colunasCusto = <T extends TotaisCusto>(): Coluna<T>[] => [
+/** Colunas orçado × pendente × atendido, comuns às tabelas. `obraTemOrcamento`: linhas de dentro de uma obra (serviço, insumo...). */
+const colunasCusto = <T extends TotaisCusto>(obraTemOrcamento?: boolean): Coluna<T>[] => [
   { t: 'Orçado', f: r => brl(r.orcado) },
   { t: 'Pendente', f: r => brl(r.pendente) },
   { t: 'Atendido', f: r => <b>{brl(r.atendido)}</b> },
   { t: '% do orçado', f: r => realizado(r) },
   { t: 'No período', f: r => brl(r.atendidoPeriodo), sec: true },
-  { t: 'Saldo', f: r => saldo(r.saldo) },
+  { t: 'Saldo', f: r => saldo(r, obraTemOrcamento) },
+  { t: 'Situação', f: r => situacao(r, obraTemOrcamento) },
 ];
 
 /** Detalhe da obra (abre na modal): indicadores, por tipo de insumo, por serviço e por insumo. */
@@ -43,20 +51,21 @@ function Detalhe({ o, comprado }: { o: CustoObra; comprado: CompraObra | undefin
   const [todosIns, setTodosIns] = useState(false);
   const servicos = todosServ ? o.servicos : o.servicos.slice(0, LIMITE);
   const insumos = todosIns ? o.insumos : o.insumos.slice(0, LIMITE);
+  const orcada = o.orcado > 0;
   return (
     <>
       <Kpis>
-        <Kpi cor={PALETA[6]} titulo="Orçado" valor={brl(o.orcado)} sub="itens do orçamento" />
-        <Kpi cor={PALETA[0]} titulo="Atendido (realizado)" valor={brl(o.atendido)} sub={`${realizado(o)} do orçado`} />
-        <Kpi cor={PALETA[3]} titulo="Pendente (comprometido)" valor={brl(o.pendente)} sub="pedidos e contratos em aberto" />
-        <Kpi cor={o.saldo < 0 ? PALETA[7] : PALETA[2]} titulo="Saldo do orçamento" valor={saldo(o.saldo)} sub="orçado − atendido − pendente" />
-        <Kpi cor={PALETA[5]} titulo="Atendido no período" valor={brl(o.atendidoPeriodo)} sub="NFs e medições do filtro" />
-        <Kpi cor={PALETA[1]} titulo="Comprado (pedidos)" valor={comprado ? brl(comprado.valor) : '—'}
+        <Kpi titulo="Orçado" valor={brl(o.orcado)} sub="itens do orçamento" />
+        <Kpi titulo="Atendido (realizado)" valor={brl(o.atendido)} sub={`${realizado(o)} do orçado`} />
+        <Kpi titulo="Pendente (comprometido)" valor={brl(o.pendente)} sub="pedidos e contratos em aberto" />
+        <Kpi titulo="Saldo do orçamento" valor={saldo(o)} sub={orcada ? 'orçado − atendido − pendente' : 'obra sem orçamento no Sienge'} status={statusOrcamento(o)} />
+        <Kpi titulo="Atendido no período" valor={brl(o.atendidoPeriodo)} sub="NFs e medições do filtro" />
+        <Kpi titulo="Comprado (pedidos)" valor={comprado ? brl(comprado.valor) : '—'}
           sub={comprado ? `${comprado.pedidos} pedidos · ${comprado.fornecedores} fornecedores` : 'sem pedido no período'} />
       </Kpis>
 
       <Card titulo="Por tipo de insumo">
-        <Tabela linhas={o.categorias} colunas={[{ t: 'Tipo', f: r => r.nome }, ...colunasCusto<(typeof o.categorias)[number]>()]} />
+        <Tabela linhas={o.categorias} colunas={[{ t: 'Tipo', f: r => r.nome }, ...colunasCusto<(typeof o.categorias)[number]>(orcada)]} />
       </Card>
 
       <div className="cols">
@@ -66,9 +75,10 @@ function Detalhe({ o, comprado }: { o: CustoObra; comprado: CompraObra | undefin
               data={{
                 labels: o.categorias.map(c => c.nome),
                 datasets: [
-                  { label: 'Orçado', data: o.categorias.map(c => c.orcado), backgroundColor: PALETA[6] },
-                  { label: 'Atendido', data: o.categorias.map(c => c.atendido), backgroundColor: PALETA[0] },
-                  { label: 'Pendente', data: o.categorias.map(c => c.pendente), backgroundColor: PALETA[3] },
+                  { label: 'Orçado', data: o.categorias.map(c => c.orcado), backgroundColor: COR.referencia },
+                  // atendido com a cor da situação do orçamento de cada tipo (cinza quando não há o que avaliar)
+                  { label: 'Atendido', data: o.categorias.map(c => c.atendido), backgroundColor: o.categorias.map(c => corStatus(statusOrcamento(c, orcada))) },
+                  { label: 'Pendente', data: o.categorias.map(c => c.pendente), backgroundColor: COR.secundaria },
                 ],
               }}
               options={opcoes}
@@ -98,7 +108,7 @@ function Detalhe({ o, comprado }: { o: CustoObra; comprado: CompraObra | undefin
       <Card titulo="Por serviço (item do orçamento)">
         <Tabela linhas={servicos} colunas={[
           { t: 'Serviço', f: r => <>{r.edt && <span className="muted">{r.edt} </span>}{r.servico}</> },
-          ...colunasCusto<(typeof servicos)[number]>(),
+          ...colunasCusto<(typeof servicos)[number]>(orcada),
         ]} />
         {o.servicos.length > LIMITE && (
           <button className="sec mais" onClick={() => setTodosServ(!todosServ)}>
@@ -114,7 +124,7 @@ function Detalhe({ o, comprado }: { o: CustoObra; comprado: CompraObra | undefin
           { t: 'Qtd. orçada', f: r => `${num(r.qtdOrcada)} ${r.un}`, sec: true },
           { t: 'Qtd. pendente', f: r => `${num(r.qtdPendente)} ${r.un}`, sec: true },
           { t: 'Qtd. atendida', f: r => `${num(r.qtdAtendida)} ${r.un}` },
-          ...colunasCusto<(typeof insumos)[number]>(),
+          ...colunasCusto<(typeof insumos)[number]>(orcada),
         ]} />
         {o.insumos.length > LIMITE && (
           <button className="sec mais" onClick={() => setTodosIns(!todosIns)}>
@@ -202,9 +212,9 @@ export default function CustosObraPage() {
                 data={{
                   labels: obras.map(o => o.obra),
                   datasets: [
-                    { label: 'Orçado', data: obras.map(o => o.orcado), backgroundColor: PALETA[6], maxBarThickness: 16 },
-                    { label: 'Atendido', data: obras.map(o => o.atendido), backgroundColor: PALETA[0], maxBarThickness: 16 },
-                    { label: 'Pendente', data: obras.map(o => o.pendente), backgroundColor: PALETA[3], maxBarThickness: 16 },
+                    { label: 'Orçado', data: obras.map(o => o.orcado), backgroundColor: COR.referencia, maxBarThickness: 16 },
+                    { label: 'Atendido', data: obras.map(o => o.atendido), backgroundColor: obras.map(o => corStatus(statusOrcamento(o))), maxBarThickness: 16 },
+                    { label: 'Pendente', data: obras.map(o => o.pendente), backgroundColor: COR.secundaria, maxBarThickness: 16 },
                   ],
                 }}
                 options={opcoesObras}

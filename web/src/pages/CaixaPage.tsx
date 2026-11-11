@@ -13,11 +13,11 @@ export default function CaixaPage() {
     <>
       <BarraFinanceiro d={d} agrupar={agrupar} setAgrupar={setAgrupar} />
       <Kpis>
-        <Kpi cor={PALETA[0]} titulo="Saldo em bancos" valor={r.saldoBancos == null ? '—' : brl(r.saldoBancos)}
+        <Kpi titulo="Saldo em bancos" valor={r.saldoBancos == null ? '—' : brl(r.saldoBancos)}
           sub={r.saldoBancos == null ? 'saldo de conta não é por obra' : `${d.saldos.length} contas`} />
-        <Kpi cor={PALETA[2]} titulo="Entradas no período" valor={brl(r.entradas)} sub="recebimentos e créditos" />
-        <Kpi cor={PALETA[7]} titulo="Saídas no período" valor={brl(r.saidas)} sub="pagamentos e débitos" />
-        <Kpi cor={PALETA[6]} titulo="Resultado" valor={<span className={r.resultadoCaixa < 0 ? 'neg' : ''}>{brl(r.resultadoCaixa)}</span>} sub="entradas − saídas" />
+        <Kpi titulo="Entradas no período" valor={brl(r.entradas)} sub="recebimentos e créditos" />
+        <Kpi titulo="Saídas no período" valor={brl(r.saidas)} sub="pagamentos e débitos" />
+        <Kpi titulo="Resultado" valor={<span className={r.resultadoCaixa < 0 ? 'neg' : ''}>{brl(r.resultadoCaixa)}</span>} sub="entradas − saídas" />
       </Kpis>
 
       <div className="cols">

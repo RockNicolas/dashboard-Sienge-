@@ -1,11 +1,14 @@
 import { Chart } from 'chart.js';
-import { PALETA } from './format';
+import { COR, PALETA } from './format';
 
 export type Tema = 'auto' | 'light' | 'dark';
 
-// Paleta categórica validada (ordem fixa, passos próprios para claro/escuro)
-const CLARO = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
-const ESCURO = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
+// Paleta de categorias (ordem fixa, passos próprios para claro/escuro): começa no cinza e evita as cores de status
+const CLARO = ['#4f46e5', '#0891b2', '#9333ea', '#0284c7', '#c026d3', '#6366f1', '#7c3aed', '#0e7490'];
+const ESCURO = ['#818cf8', '#22d3ee', '#c084fc', '#38bdf8', '#e879f9', '#a5b4fc', '#a78bfa', '#67e8f9'];
+// cores com significado nos gráficos (mesmas dos selos dos cards)
+const COR_CLARO = { principal: '#4f46e5', secundaria: '#9333ea', terciaria: '#0284c7', referencia: '#c7d2fe', neutro: '#64748b', neutroMedio: '#94a3b8', neutroClaro: '#cbd5e1', bom: '#16a34a', melhorar: '#eab308', atencao: '#ea580c', ruim: '#dc2626' };
+const COR_ESCURO = { principal: '#818cf8', secundaria: '#c084fc', terciaria: '#38bdf8', referencia: '#3730a3', neutro: '#94a3b8', neutroMedio: '#64748b', neutroClaro: '#475569', bom: '#3ecf9a', melhorar: '#facc15', atencao: '#fb923c', ruim: '#ff7b76' };
 
 export function lerTema(): Tema {
   try {
@@ -25,6 +28,7 @@ export function aplicarTema(t: Tema): void {
 
   const dark = escuro(t);
   PALETA.splice(0, PALETA.length, ...(dark ? ESCURO : CLARO));
+  Object.assign(COR, dark ? COR_ESCURO : COR_CLARO);
 
   const css = getComputedStyle(root);
   const txt = css.getPropertyValue('--muted').trim();

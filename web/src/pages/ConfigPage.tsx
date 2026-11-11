@@ -5,8 +5,9 @@ import { api } from '../api/client';
 import SincronizacaoDialog from '../components/SincronizacaoDialog';
 import { Card, Grafico, Kpi, Kpis, Tabela } from '../components/ui';
 import { useDashboard } from '../hooks/useDashboard';
-import { dataBR, PALETA } from '../lib/format';
+import { COR, corStatus, dataBR } from '../lib/format';
 import { nomePeriodoSync } from '../lib/periodo';
+import { statusCota } from '../lib/status';
 
 interface Form {
   usarMock: boolean; subdominio: string; usuario: string; senha: string;
@@ -211,18 +212,19 @@ export default function ConfigPage() {
           <p className={`msg ${q.plano.confere === true ? 'ok' : q.plano.confere === false ? 'err' : ''}`}>{q.plano.mensagem}</p>
           <div className={`meter ${nivel}`}><i style={{ width: `${q.limite ? q.pct : 0}%` }} /></div>
           <Kpis>
-            <Kpi cor={PALETA[0]} titulo="Usadas hoje" valor={q.usadas} sub={q.limite ? `de ${q.limite}` : 'limite não definido'} />
-            <Kpi cor={PALETA[2]} titulo="Restantes" valor={q.restante ?? '—'} sub={q.limite ? `${q.pct}% consumido` : 'selecione o plano ao lado'} />
-            <Kpi cor={PALETA[7]} titulo="Erros hoje" valor={q.erros} sub="respostas com falha" />
-            <Kpi cor={PALETA[6]} titulo="Bulk-data hoje" valor={q.bulkUsadas} sub={q.bulkLimite ? `de ${q.bulkLimite} (cota separada, financeiro)` : 'cota separada, financeiro'} />
+            <Kpi titulo="Usadas hoje" valor={q.usadas} sub={q.limite ? `de ${q.limite}` : 'limite não definido'} status={statusCota(q.pct, q.limite)} />
+            <Kpi titulo="Restantes" valor={q.restante ?? '—'} sub={q.limite ? `${q.pct}% consumido` : 'selecione o plano ao lado'} />
+            <Kpi titulo="Erros hoje" valor={q.erros} sub="respostas com falha" />
+            <Kpi titulo="Bulk-data hoje" valor={q.bulkUsadas} sub={q.bulkLimite ? `de ${q.bulkLimite} (cota separada, financeiro)` : 'cota separada, financeiro'} />
           </Kpis>
           <Grafico>
             <Bar
               data={{
                 labels: q.serie.map(s => s.dia.slice(5).split('-').reverse().join('/')),
                 datasets: [
-                  { label: 'Requisições', data: q.serie.map(s => s.requisicoes), backgroundColor: PALETA[0] },
-                  { label: 'Erros', data: q.serie.map(s => s.erros), backgroundColor: PALETA[7] },
+                  // cada dia com a cor de quanto da cota foi usado
+                  { label: 'Requisições', data: q.serie.map(s => s.requisicoes), backgroundColor: q.serie.map(s => corStatus(q.limite ? statusCota((s.requisicoes / q.limite) * 100, q.limite) : null)) },
+                  { label: 'Erros', data: q.serie.map(s => s.erros), backgroundColor: COR.ruim },
                 ],
               }}
               options={{ responsive: true, maintainAspectRatio: false, scales: { x: { grid: { display: false } }, y: { beginAtZero: true } } }}

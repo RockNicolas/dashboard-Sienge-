@@ -6,6 +6,7 @@ import ComprasPage from './pages/ComprasPage';
 import FornecedoresPage from './pages/FornecedoresPage';
 import CustosObraPage from './pages/CustosObraPage';
 import ResultadoObraPage from './pages/ResultadoObraPage';
+import ComparativosPage from './pages/ComparativosPage';
 import ConfigPage from './pages/ConfigPage';
 import ErroPage from './pages/ErroPage';
 // Telas ocultas por enquanto (foco em Visão geral + Suprimentos). Para voltar com uma delas,
@@ -26,6 +27,7 @@ import ErroPage from './pages/ErroPage';
 // Configurações fica no rodapé do menu (não é um módulo).
 export const MENU: { to: string; label: string; icone: string; end?: boolean; secao?: string }[] = [
   { to: '/', label: 'Visão geral', icone: 'home', end: true },
+  { to: '/comparativos', label: 'Comparativos', icone: 'compare' },
   { to: '/compras', label: 'Histórico de compras', icone: 'clock', secao: 'Suprimentos' },
   { to: '/fornecedores', label: 'Fornecedores', icone: 'truck' },
   { to: '/custos-obra', label: 'Custos por obra', icone: 'building' },
@@ -54,6 +56,7 @@ export const router = createBrowserRouter([
     errorElement: <ErroPage />,
     children: [
       { index: true, element: <GeralPage /> },
+      { path: 'comparativos', element: <ComparativosPage /> },
       { path: 'compras', element: <ComprasPage /> },
       { path: 'fornecedores', element: <FornecedoresPage /> },
       { path: 'custos-obra', element: <CustosObraPage /> },

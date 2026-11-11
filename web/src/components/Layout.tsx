@@ -6,6 +6,7 @@ import ExportarDialog from './ExportarDialog';
 import { dataBR, dataHora } from '../lib/format';
 import { atalhoDe, atalhosPeriodo } from '../lib/periodo';
 import { aplicarTema, escuro, lerTema, type Tema } from '../lib/tema';
+import { LegendaCores } from './Status';
 import { MENU, OUTRAS_TELAS } from '../routes';
 
 const ICONES: Record<string, string> = {
@@ -57,6 +58,8 @@ function Topo() {
   };
   const obraNome = dados?.obrasDisponiveis.find(o => o.id === filtros.obra)?.nome;
   const [exportar, setExportar] = useState(false);
+  // Comparativos escolhe o período no próprio seletor (semanal/mensal/anual): ali só a obra vale
+  const usaPeriodo = !pathname.startsWith('/comparativos');
   const titulo = MENU.find(m => (m.end ? pathname === m.to : pathname.startsWith(m.to)))?.label
     ?? Object.entries(OUTRAS_TELAS).find(([to]) => pathname.startsWith(to))?.[1] ?? '';
 
@@ -71,28 +74,32 @@ function Topo() {
         {/* no PDF a barra de filtros some: o período e a obra vão no cabeçalho */}
         {dados && (
           <span className="muted so-impressao">
-            Período: {dataBR(filtros.from || dados.de)} a {dataBR(filtros.to || dados.ate)} · Obra: {obraNome ?? 'todas as obras'}
+            {usaPeriodo && <>Período: {dataBR(filtros.from || dados.de)} a {dataBR(filtros.to || dados.ate)} · </>}Obra: {obraNome ?? 'todas as obras'}
           </span>
         )}
       </div>
       <div className="filtros">
-        <label className="f-periodo">Período
-          <select value={atalho} onChange={e => escolherAtalho(e.target.value)}>
-            {atalhos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-            {atalho === 'outro' && <option value="outro">Personalizado</option>}
-          </select>
-        </label>
-        <label>De <input type="date" value={f.from || dados?.de || ''} onChange={e => setF({ ...f, from: e.target.value })} /></label>
-        <label>Até <input type="date" value={f.to || dados?.ate || ''} onChange={e => setF({ ...f, to: e.target.value })} /></label>
+        {usaPeriodo && <>
+          <label className="f-periodo">Período
+            <select value={atalho} onChange={e => escolherAtalho(e.target.value)}>
+              {atalhos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+              {atalho === 'outro' && <option value="outro">Personalizado</option>}
+            </select>
+          </label>
+          <label>De <input type="date" value={f.from || dados?.de || ''} onChange={e => setF({ ...f, from: e.target.value })} /></label>
+          <label>Até <input type="date" value={f.to || dados?.ate || ''} onChange={e => setF({ ...f, to: e.target.value })} /></label>
+        </>}
         <label className="f-obra">Obra
           <select value={f.obra} onChange={e => escolherObra(e.target.value)}>
             <option value="">Todas as obras</option>
             {dados?.obrasDisponiveis.map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}
           </select>
         </label>
-        <button onClick={() => aplicar(f)} disabled={!periodoMudou} title={periodoMudou ? 'Aplicar o novo período' : 'Mude as datas para aplicar um novo período'}>
-          Aplicar
-        </button>
+        {usaPeriodo && (
+          <button onClick={() => aplicar(f)} disabled={!periodoMudou} title={periodoMudou ? 'Aplicar o novo período' : 'Mude as datas para aplicar um novo período'}>
+            Aplicar
+          </button>
+        )}
         <button className="sec" onClick={atualizar} title="Recarrega do Sienge">↻ Sienge</button>
         <button className="exportar" onClick={() => setExportar(true)} title="Exportar relatório em PDF ou Excel">
           <Icone nome="download" />Exportar
@@ -160,6 +167,7 @@ function Conteudo() {
         <Topo />
         <main key={`${tema}-${escuro(tema)}`}>
           {erro && <div className="erro">Erro: {erro}</div>}
+          {dados && !pathname.startsWith('/configuracoes') && <LegendaCores />}
           {!erro && dados?.aviso && <div className="aviso-sync">{dados.aviso}</div>}
           {dados ? <Outlet /> : !erro && <p className="muted">Carregando…</p>}
         </main>

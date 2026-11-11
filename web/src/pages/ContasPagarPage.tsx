@@ -14,10 +14,10 @@ export default function ContasPagarPage() {
     <>
       <BarraFinanceiro d={d} agrupar={agrupar} setAgrupar={setAgrupar} />
       <Kpis>
-        <Kpi cor={PALETA[7]} titulo="Total a pagar" valor={brl(r.aPagar)} sub={`${r.parcelasPagar} parcelas no período`} />
-        <Kpi cor={PALETA[2]} titulo="Já pago" valor={brl(r.pago)} sub={r.aPagar ? `${pct(Math.round((r.pago / r.aPagar) * 1000) / 10)} do total` : ' '} />
-        <Kpi cor={PALETA[0]} titulo="Em aberto" valor={brl(r.pagarAberto)} sub="a vencer + vencido" />
-        <Kpi cor={PALETA[3]} titulo="Vencido" valor={brl(r.pagarVencido)} sub="atrasado, sem baixa" />
+        <Kpi titulo="Total a pagar" valor={brl(r.aPagar)} sub={`${r.parcelasPagar} parcelas no período`} />
+        <Kpi titulo="Já pago" valor={brl(r.pago)} sub={r.aPagar ? `${pct(Math.round((r.pago / r.aPagar) * 1000) / 10)} do total` : ' '} />
+        <Kpi titulo="Em aberto" valor={brl(r.pagarAberto)} sub="a vencer + vencido" />
+        <Kpi titulo="Vencido" valor={brl(r.pagarVencido)} sub="atrasado, sem baixa" />
       </Kpis>
 
       <div className="cols">

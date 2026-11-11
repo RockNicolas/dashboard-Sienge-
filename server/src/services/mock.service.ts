@@ -106,7 +106,9 @@ function gerarFinanceiro(): DadosFinanceiros {
   const r = rng(7);
   const hoje = isoDia(new Date());
   const { vencDe } = janelaFinanceira();
+  // começa 12 meses antes da janela sincronizada: o comparativo anual da demonstração tem o ano anterior
   const base = new Date(vencDe + 'T00:00:00Z');
+  base.setUTCMonth(base.getUTCMonth() - 12);
   const pagar: ContaPagar[] = [];
   const titulos: TituloInfo[] = [];
   const titulosReceber: TituloInfo[] = [];
@@ -129,7 +131,7 @@ function gerarFinanceiro(): DadosFinanceiros {
       conciliado: r() > 0.1, tituloId, parceiro, planos, obras,
     });
 
-  for (let m = 0; m < 19; m++) {
+  for (let m = 0; m < 31; m++) {
     const ano = base.getUTCFullYear();
     const mes = base.getUTCMonth() + m;
     // contas a pagar: ~6 títulos por obra no mês
@@ -261,7 +263,8 @@ export const MockService = {
     let pedido = 1000;
     const hojeIso = isoDia(hoje);
 
-    for (let m = 11; m >= 0; m--) {
+    // 24 meses: o comparativo anual (e "mesmo mês do ano passado") da demonstração tem com o que comparar
+    for (let m = 23; m >= 0; m--) {
       const base = new Date(hoje.getFullYear(), hoje.getMonth() - m, 1);
       for (const ins of INSUMOS) {
         const nCompras = 1 + Math.floor(r() * 2);

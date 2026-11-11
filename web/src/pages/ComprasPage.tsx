@@ -5,7 +5,7 @@ import { TabelaItens } from '../components/TabelaCompras';
 import { Busca, Card, CodInsumo, Kpi, Kpis, MostrarMais, NomeLink, paraBusca } from '../components/ui';
 import { useDados } from '../hooks/useDashboard';
 import { useDetalheNaUrl } from '../hooks/useDetalheNaUrl';
-import { brl, brlPreco, dataBR, listaCurta, num, PALETA, pct } from '../lib/format';
+import { brl, brlPreco, dataBR, listaCurta, num, pct } from '../lib/format';
 
 const PASSO_ITENS = listaCurta() ? 20 : 50;
 const PASSO_MATERIAIS = listaCurta() ? 20 : 60;
@@ -43,10 +43,10 @@ export default function ComprasPage() {
   return (
     <>
       <Kpis>
-        <Kpi cor={PALETA[0]} titulo="Total comprado" valor={brl(r.comprado)} sub="pedidos de compra no período" />
-        <Kpi cor={PALETA[6]} titulo="Pedidos" valor={fmt(r.pedidos)} sub={`ticket médio ${brl(r.ticketMedio)}`} />
-        <Kpi cor={PALETA[1]} titulo="Itens de pedido" valor={fmt(d.comprasTotal)} sub="linhas compradas" />
-        <Kpi cor={PALETA[3]} titulo="Materiais diferentes" valor={fmt(r.insumos)} sub={`de ${r.fornecedores} fornecedores`} />
+        <Kpi titulo="Total comprado" valor={brl(r.comprado)} sub="pedidos de compra no período" />
+        <Kpi titulo="Pedidos" valor={fmt(r.pedidos)} sub={`ticket médio ${brl(r.ticketMedio)}`} />
+        <Kpi titulo="Itens de pedido" valor={fmt(d.comprasTotal)} sub="linhas compradas" />
+        <Kpi titulo="Materiais diferentes" valor={fmt(r.insumos)} sub={`de ${r.fornecedores} fornecedores`} />
       </Kpis>
 
       <Card titulo="Materiais comprados">

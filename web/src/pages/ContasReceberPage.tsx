@@ -15,10 +15,10 @@ export default function ContasReceberPage() {
     <>
       <BarraFinanceiro d={d} agrupar={agrupar} setAgrupar={setAgrupar} />
       <Kpis>
-        <Kpi cor={PALETA[2]} titulo="Total a receber" valor={brl(r.aReceber)} sub={`${r.parcelasReceber} parcelas no período`} />
-        <Kpi cor={PALETA[0]} titulo="Já recebido" valor={brl(r.recebido)} sub={r.aReceber ? `${pct(Math.round((r.recebido / r.aReceber) * 1000) / 10)} do total` : ' '} />
-        <Kpi cor={PALETA[6]} titulo="Em aberto" valor={brl(r.receberAberto)} sub="a vencer + vencido" />
-        <Kpi cor={PALETA[7]} titulo="Inadimplência" valor={brl(r.receberVencido)} sub={`${pct(inadimplencia)} do período`} />
+        <Kpi titulo="Total a receber" valor={brl(r.aReceber)} sub={`${r.parcelasReceber} parcelas no período`} />
+        <Kpi titulo="Já recebido" valor={brl(r.recebido)} sub={r.aReceber ? `${pct(Math.round((r.recebido / r.aReceber) * 1000) / 10)} do total` : ' '} />
+        <Kpi titulo="Em aberto" valor={brl(r.receberAberto)} sub="a vencer + vencido" />
+        <Kpi titulo="Inadimplência" valor={brl(r.receberVencido)} sub={`${pct(inadimplencia)} do período`} />
       </Kpis>
 
       <div className="cols">

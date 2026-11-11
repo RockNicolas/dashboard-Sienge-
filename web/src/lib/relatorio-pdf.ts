@@ -5,6 +5,7 @@ import { autoTable, type UserOptions } from 'jspdf-autotable';
 import { Chart, type ChartConfiguration } from 'chart.js';
 import type { CustosObraResponse, DashboardResponse, FinanceiroResponse } from '@server/types';
 import { api, type FiltrosUI } from '../api/client';
+import { statusMargem } from './status';
 
 export type SecaoRelatorio = 'geral' | 'compras' | 'fornecedores' | 'custos' | 'resultado';
 export interface OpcoesPdf { filtros: FiltrosUI; secoes: SecaoRelatorio[]; obraNome: string }
@@ -21,7 +22,10 @@ const COR: Record<'marca' | 'texto' | 'suave' | 'linha' | 'fundo' | 'neg' | 'pos
   marca: [42, 120, 214], texto: [17, 24, 39], suave: [107, 114, 128], linha: [229, 231, 235],
   fundo: [243, 246, 251], neg: [196, 51, 47], pos: [11, 122, 83],
 };
-const PALETA = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
+// gráficos e cartões: cores de série vivas (sem as de status) e cor de status onde há bom/ruim — mesma regra da tela
+const PRINCIPAL = '#4f46e5', SECUNDARIA = '#9333ea', TERCIARIA = '#0284c7', REFERENCIA = '#c7d2fe';
+const COR_STATUS = { bom: '#16a34a', melhorar: '#eab308', atencao: '#ea580c', ruim: '#dc2626' } as const;
+const corMargem = (resultado: number, receitas: number) => { const st = statusMargem(resultado, receitas); return st ? COR_STATUS[st.nivel] : PRINCIPAL; };
 const LIMITE_ITENS = 300;
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
@@ -270,23 +274,23 @@ function secaoGeral(pdf: Documento, d: DashboardResponse, c: CustosObraResponse 
   const r = d.resumo;
   pdf.secao('Visão geral', 'Pedidos de compra do período');
   pdf.kpis([
-    { rotulo: 'Total comprado', valor: brl(r.comprado), cor: PALETA[0] },
-    { rotulo: 'Pedidos de compra', valor: num(r.pedidos), cor: PALETA[1] },
-    { rotulo: 'Ticket médio por pedido', valor: brl(r.ticketMedio), cor: PALETA[2] },
-    { rotulo: 'Fornecedores', valor: num(r.fornecedores), cor: PALETA[3] },
-    { rotulo: 'Materiais diferentes', valor: num(r.insumos), cor: PALETA[4] },
-    { rotulo: 'Obras com compra', valor: num(r.obrasComCompra), cor: PALETA[5] },
+    { rotulo: 'Total comprado', valor: brl(r.comprado), cor: PRINCIPAL },
+    { rotulo: 'Pedidos de compra', valor: num(r.pedidos), cor: PRINCIPAL },
+    { rotulo: 'Ticket médio por pedido', valor: brl(r.ticketMedio), cor: PRINCIPAL },
+    { rotulo: 'Fornecedores', valor: num(r.fornecedores), cor: PRINCIPAL },
+    { rotulo: 'Materiais diferentes', valor: num(r.insumos), cor: PRINCIPAL },
+    { rotulo: 'Obras com compra', valor: num(r.obrasComCompra), cor: PRINCIPAL },
   ]);
   const extra: { rotulo: string; valor: string; cor: string; neg?: boolean }[] = [];
   if (c?.obras.length) {
     const t = c.obras.reduce((a, o) => ({ orcado: a.orcado + o.orcado, atendido: a.atendido + o.atendido, pendente: a.pendente + o.pendente }), { orcado: 0, atendido: 0, pendente: 0 });
-    extra.push({ rotulo: 'Orçado (obras)', valor: brl(t.orcado), cor: PALETA[6] }, { rotulo: 'Atendido (realizado)', valor: brl(t.atendido), cor: PALETA[0] },
-      { rotulo: 'Pendente (comprometido)', valor: brl(t.pendente), cor: PALETA[3] });
+    extra.push({ rotulo: 'Orçado (obras)', valor: brl(t.orcado), cor: PRINCIPAL }, { rotulo: 'Atendido (realizado)', valor: brl(t.atendido), cor: PRINCIPAL },
+      { rotulo: 'Pendente (comprometido)', valor: brl(t.pendente), cor: PRINCIPAL });
   }
   if (f) {
     const res = f.resumo.aReceber - f.resumo.aPagar;
-    extra.push({ rotulo: 'Receitas', valor: brl(f.resumo.aReceber), cor: PALETA[2] }, { rotulo: 'Despesas', valor: brl(f.resumo.aPagar), cor: PALETA[7] },
-      { rotulo: 'Resultado', valor: brl(res), cor: PALETA[0], neg: res < 0 });
+    extra.push({ rotulo: 'Receitas', valor: brl(f.resumo.aReceber), cor: PRINCIPAL }, { rotulo: 'Despesas', valor: brl(f.resumo.aPagar), cor: PRINCIPAL },
+      { rotulo: 'Resultado', valor: brl(res), cor: PRINCIPAL, neg: res < 0 });
   }
   if (extra.length) pdf.kpis(extra.slice(0, 6));
 
@@ -296,7 +300,7 @@ function secaoGeral(pdf: Documento, d: DashboardResponse, c: CustosObraResponse 
     const h = Math.max(42, Math.min(72, pdf.livre() - 46));
     pdf.imagem(grafico({
       type: 'bar',
-      data: { labels: meses.map(m => rotuloMes(m.mes)), datasets: [{ label: 'Comprado', data: meses.map(m => m.valor), backgroundColor: PALETA[0], borderRadius: 6 }] },
+      data: { labels: meses.map(m => rotuloMes(m.mes)), datasets: [{ label: 'Comprado', data: meses.map(m => m.valor), backgroundColor: PRINCIPAL, borderRadius: 6 }] },
       options: opcoes(false, false),
     }, 2000, Math.round((2000 * h) / UTIL)), UTIL, h);
   }
@@ -337,7 +341,7 @@ function secaoFornecedores(pdf: Documento, d: DashboardResponse) {
   if (top.length) {
     pdf.imagem(grafico({
       type: 'bar',
-      data: { labels: top.map(x => encurtar(x.fornecedor, 34)), datasets: [{ label: 'Valor comprado', data: top.map(x => x.valor), backgroundColor: PALETA[0], borderRadius: 6 }] },
+      data: { labels: top.map(x => encurtar(x.fornecedor, 34)), datasets: [{ label: 'Valor comprado', data: top.map(x => x.valor), backgroundColor: PRINCIPAL, borderRadius: 6 }] },
       options: opcoes(true, false),
     }, 2000, 640), UTIL, UTIL * 640 / 2000);
   }
@@ -368,9 +372,9 @@ function secaoCustos(pdf: Documento, d: DashboardResponse, c: CustosObraResponse
     data: {
       labels: c.obras.map(o => encurtar(o.obra, 26)),
       datasets: [
-        { label: 'Orçado', data: c.obras.map(o => o.orcado), backgroundColor: PALETA[6], borderRadius: 4 },
-        { label: 'Atendido', data: c.obras.map(o => o.atendido), backgroundColor: PALETA[0], borderRadius: 4 },
-        { label: 'Pendente', data: c.obras.map(o => o.pendente), backgroundColor: PALETA[3], borderRadius: 4 },
+        { label: 'Orçado', data: c.obras.map(o => o.orcado), backgroundColor: REFERENCIA, borderRadius: 4 },
+        { label: 'Atendido', data: c.obras.map(o => o.atendido), backgroundColor: PRINCIPAL, borderRadius: 4 },
+        { label: 'Pendente', data: c.obras.map(o => o.pendente), backgroundColor: SECUNDARIA, borderRadius: 4 },
       ],
     },
     options: opcoes(false, true),
@@ -393,12 +397,12 @@ function secaoResultado(pdf: Documento, f: FinanceiroResponse) {
   const real = r.recebido - r.pago;
   pdf.secao('Resultado da obra', `Receitas (contas a receber) − despesas (contas a pagar) com vencimento de ${dataBR(f.de)} a ${dataBR(f.ate)}`);
   pdf.kpis([
-    { rotulo: 'Receitas', valor: brl(r.aReceber), cor: PALETA[2] },
-    { rotulo: 'Despesas', valor: brl(r.aPagar), cor: PALETA[7] },
-    { rotulo: 'Resultado', valor: brl(res), cor: PALETA[0], neg: res < 0 },
-    { rotulo: 'Margem', valor: r.aReceber ? pct((res / r.aReceber) * 100) : '—', cor: PALETA[6], neg: res < 0 },
-    { rotulo: 'Recebido', valor: brl(r.recebido), cor: PALETA[5] },
-    { rotulo: 'Pago', valor: brl(r.pago), cor: PALETA[1] },
+    { rotulo: 'Receitas', valor: brl(r.aReceber), cor: PRINCIPAL },
+    { rotulo: 'Despesas', valor: brl(r.aPagar), cor: PRINCIPAL },
+    { rotulo: 'Resultado', valor: brl(res), cor: PRINCIPAL, neg: res < 0 },
+    { rotulo: 'Margem', valor: r.aReceber ? pct((res / r.aReceber) * 100) : '—', cor: PRINCIPAL, neg: res < 0 },
+    { rotulo: 'Recebido', valor: brl(r.recebido), cor: PRINCIPAL },
+    { rotulo: 'Pago', valor: brl(r.pago), cor: PRINCIPAL },
   ]);
   const obras = [...f.porObra].sort((a, b) => b.aReceber + b.aPagar - (a.aReceber + a.aPagar));
   if (obras.length) {
@@ -407,9 +411,9 @@ function secaoResultado(pdf: Documento, f: FinanceiroResponse) {
       data: {
         labels: obras.map(o => encurtar(o.obra || 'Sem obra', 26)),
         datasets: [
-          { label: 'Receitas', data: obras.map(o => o.aReceber), backgroundColor: PALETA[2], borderRadius: 4 },
-          { label: 'Despesas', data: obras.map(o => o.aPagar), backgroundColor: PALETA[7], borderRadius: 4 },
-          { label: 'Resultado', data: obras.map(o => o.aReceber - o.aPagar), backgroundColor: PALETA[0], borderRadius: 4 },
+          { label: 'Receitas', data: obras.map(o => o.aReceber), backgroundColor: TERCIARIA, borderRadius: 4 },
+          { label: 'Despesas', data: obras.map(o => o.aPagar), backgroundColor: SECUNDARIA, borderRadius: 4 },
+          { label: 'Resultado', data: obras.map(o => o.aReceber - o.aPagar), backgroundColor: obras.map(o => corMargem(o.aReceber - o.aPagar, o.aReceber)), borderRadius: 4 },
         ],
       },
       options: opcoes(false, true),

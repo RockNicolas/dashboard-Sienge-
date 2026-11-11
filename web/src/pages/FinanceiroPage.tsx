@@ -25,12 +25,12 @@ export default function FinanceiroPage() {
     <>
       <BarraFinanceiro d={d} agrupar={agrupar} setAgrupar={setAgrupar} />
       <Kpis>
-        <Kpi cor={PALETA[7]} titulo="A pagar no período" valor={brl(r.aPagar)} sub={`${brl(r.pagarAberto)} em aberto`} />
-        <Kpi cor={PALETA[2]} titulo="A receber no período" valor={brl(r.aReceber)} sub={`${brl(r.receberAberto)} em aberto`} />
-        <Kpi cor={PALETA[3]} titulo="Vencido a pagar" valor={brl(r.pagarVencido)} sub="parcelas atrasadas" />
-        <Kpi cor={PALETA[1]} titulo="Vencido a receber" valor={brl(r.receberVencido)} sub="inadimplência" />
-        <Kpi cor={PALETA[6]} titulo="Resultado do caixa" valor={brl(r.resultadoCaixa)} sub={`${brl(r.entradas)} entradas − ${brl(r.saidas)} saídas`} />
-        <Kpi cor={PALETA[0]} titulo="Saldo em bancos" valor={r.saldoBancos == null ? '—' : brl(r.saldoBancos)}
+        <Kpi titulo="A pagar no período" valor={brl(r.aPagar)} sub={`${brl(r.pagarAberto)} em aberto`} />
+        <Kpi titulo="A receber no período" valor={brl(r.aReceber)} sub={`${brl(r.receberAberto)} em aberto`} />
+        <Kpi titulo="Vencido a pagar" valor={brl(r.pagarVencido)} sub="parcelas atrasadas" />
+        <Kpi titulo="Vencido a receber" valor={brl(r.receberVencido)} sub="inadimplência" />
+        <Kpi titulo="Resultado do caixa" valor={brl(r.resultadoCaixa)} sub={`${brl(r.entradas)} entradas − ${brl(r.saidas)} saídas`} />
+        <Kpi titulo="Saldo em bancos" valor={r.saldoBancos == null ? '—' : brl(r.saldoBancos)}
           sub={r.saldoBancos == null ? 'saldo de conta não é por obra' : 'hoje, todas as contas'} />
       </Kpis>
 

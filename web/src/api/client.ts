@@ -1,5 +1,5 @@
 import type {
-  Agrupamento, ConfigEntrada, ConfigPublica, ConfigSync, CustosObraResponse, DashboardResponse, EstimativaSync, FinanceiroResponse,
+  Agrupamento, ComparativoResponse, ConfigEntrada, ConfigPublica, ConfigSync, CustosObraResponse, GrupoComparativo, DashboardResponse, EstimativaSync, FinanceiroResponse,
   ImportConfirmacao, ImportListagem, ImportPreview, ImportResultado, JanelaSync, OpcoesSync, QuotaInfo, Sincronizacao, TesteConexao,
 } from '@server/types';
 
@@ -41,6 +41,13 @@ export const api = {
     if (f.obra) q.set('obra', f.obra);
     if (forcar) q.set('forcar', '1');
     return req<FinanceiroResponse>('/api/financeiro?' + q);
+  },
+  /** Comparativo semanal/mensal/anual: só lê o que já está salvo (não gasta cota do Sienge). */
+  comparativos: (agrupar: GrupoComparativo, ref: string, obra: string) => {
+    const q = new URLSearchParams({ agrupar });
+    if (ref) q.set('ref', ref);
+    if (obra) q.set('obra', obra);
+    return req<ComparativoResponse>('/api/comparativos?' + q);
   },
   custosObra: (f: FiltrosUI, forcar = false) => {
     const q = new URLSearchParams();

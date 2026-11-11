@@ -4,9 +4,11 @@ import type { RankingFornecedor } from '@server/types';
 import FornecedorDetalhe from '../components/FornecedorDetalhe';
 import Modal from '../components/Modal';
 import { Busca, Card, Grafico, Kpi, Kpis, linhaClicavel, MostrarMais, NomeLink, paraBusca } from '../components/ui';
+import { RegraGrafico, ValorStatus } from '../components/Status';
 import { useDados } from '../hooks/useDashboard';
+import { LIMITES, statusAtraso, statusConcentracao, textoStatus } from '../lib/status';
 import { useDetalheNaUrl } from '../hooks/useDetalheNaUrl';
-import { brl, brlCurto, celular, dataBR, listaCurta, PALETA, pct, rotuloEixo } from '../lib/format';
+import { brl, brlCurto, celular, COR, corStatus, dataBR, listaCurta, pct, rotuloEixo } from '../lib/format';
 
 type Ordem = 'valor' | 'pedidos';
 const PASSO = listaCurta() ? 15 : 30;
@@ -55,17 +57,20 @@ export default function FornecedoresPage() {
   const pedidos = todos.reduce((s, f) => s + f.pedidos, 0);
   const semCadastro = todos.filter(f => !f.cadastro).length;
   const grafico = (ordem === 'valor' ? todos : [...todos].sort((a, b) => b.pedidos - a.pedidos)).slice(0, 15);
+  const entrega = grafico.map(f => statusAtraso(f.atrasados, f.pedidos));
   const fornecedor = aberto ? todos.find(f => f.fornecedorId === aberto) : undefined;
   const posicao = fornecedor ? todos.indexOf(fornecedor) + 1 : 0;
 
   return (
     <>
       <Kpis>
-        <Kpi cor={PALETA[0]} titulo="Fornecedores" valor={fmt(todos.length)} sub="com pedido no período" />
-        <Kpi cor={PALETA[4]} titulo="Maior fornecedor" valor={todos[0] ? pct(todos[0].participacao) : '—'} sub={todos[0]?.fornecedor ?? 'sem compras'} />
-        <Kpi cor={PALETA[6]} titulo="Top 5 concentram" valor={pct(Math.round(top5 * 10) / 10)} sub="do valor comprado" />
-        <Kpi cor={PALETA[3]} titulo="Classe A" valor={fmt(classeA)} sub="fornecedores = 80% das compras" />
-        <Kpi cor={PALETA[7]} titulo="Pedidos com entrega em atraso" valor={fmt(atrasados)} sub={pedidos ? `${pct(Math.round((atrasados / pedidos) * 1000) / 10)} dos pedidos` : '—'} />
+        <Kpi titulo="Fornecedores" valor={fmt(todos.length)} sub="com pedido no período" />
+        <Kpi titulo="Maior fornecedor" valor={todos[0] ? pct(todos[0].participacao) : '—'} sub={todos[0]?.fornecedor ?? 'sem compras'}
+          status={todos[0] ? statusConcentracao(todos[0].participacao) : null} />
+        <Kpi titulo="Top 5 concentram" valor={pct(Math.round(top5 * 10) / 10)} sub="do valor comprado" />
+        <Kpi titulo="Classe A" valor={fmt(classeA)} sub="fornecedores = 80% das compras" />
+        <Kpi titulo="Pedidos com entrega em atraso" valor={fmt(atrasados)} sub={pedidos ? `${pct(Math.round((atrasados / pedidos) * 1000) / 10)} dos pedidos` : '—'}
+          status={statusAtraso(atrasados, pedidos)} />
       </Kpis>
 
       <div className="barra-fin">
@@ -84,11 +89,16 @@ export default function FornecedoresPage() {
               datasets: [{
                 label: ordem === 'valor' ? 'Valor comprado' : 'Pedidos',
                 data: grafico.map(f => (ordem === 'valor' ? f.valor : f.pedidos)),
-                backgroundColor: PALETA[0],
+                // cada fornecedor com a cor do desempenho de entrega: em dia (verde) até muitos pedidos atrasados (vermelho)
+                backgroundColor: entrega.map(s => corStatus(s)),
               }],
             }}
             options={{
-              indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+              indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { afterLabel: c => textoStatus(entrega[c.dataIndex]) } },
+              },
               scales: {
                 x: { ticks: { callback: v => (ordem === 'valor' ? brlCurto(Number(v)) : String(v)), maxTicksLimit: celular() ? 3 : 5 } },
                 y: { ticks: { callback: rotuloEixo } },
@@ -96,6 +106,13 @@ export default function FornecedoresPage() {
             }}
           />
         </Grafico>
+        <RegraGrafico
+          regras={{
+            bom: 'entregas em dia', melhorar: `até ${LIMITES.atraso[1]}% dos pedidos com atraso`,
+            atencao: `até ${LIMITES.atraso[2]}%`, ruim: `mais de ${LIMITES.atraso[2]}% com atraso`,
+          }}
+          extra="· cor = desempenho de entrega do fornecedor (pedidos com entrega atrasada no Sienge)"
+        />
       </Card>
 
       <Card titulo="Fornecedores">
@@ -122,7 +139,7 @@ export default function FornecedoresPage() {
                     <td data-label="Ticket médio" className="col-sec">{brl(f.ticketMedio)}</td>
                     <td data-label="Materiais" className="col-sec">{f.itens}</td>
                     <td data-label="Obras" className="col-sec">{f.obras}</td>
-                    <td data-label="Em atraso" className={f.atrasados ? 'neg' : ''}>{f.atrasados}</td>
+                    <td data-label="Em atraso"><ValorStatus s={f.atrasados ? statusAtraso(f.atrasados, f.pedidos) : null}>{f.atrasados}</ValorStatus></td>
                     <td data-label="Última compra" className="col-sec">{f.ultimaCompra ? dataBR(f.ultimaCompra) : '—'}</td>
                     <td data-label="Principais materiais" className="col-sec">
                       {f.topInsumos.map(t => <small key={t.insumo} className="bloco">{t.insumo} · {brl(t.valor)}</small>)}

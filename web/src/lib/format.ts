@@ -14,8 +14,21 @@ export const SITUACAO_PEDIDO: Record<string, string> = {
 export const pct = (n: number) => num(n) + '%';
 export const dataHora = (s: string) => new Date(s).toLocaleString('pt-BR');
 
-// Preenchida por aplicarTema() (lib/tema.ts) conforme claro/escuro.
-export const PALETA: string[] = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
+// Preenchidas por aplicarTema() (lib/tema.ts) conforme claro/escuro.
+/** Cores de categoria (diferenciar séries/fatias): vivas, mas sem verde, amarelo, laranja e vermelho, que são de status. */
+export const PALETA: string[] = ['#4f46e5', '#0891b2', '#9333ea', '#0284c7', '#c026d3', '#6366f1', '#7c3aed', '#0e7490'];
+/**
+ * Cores dos gráficos. Status (bom, melhorar, atencao, ruim) = as mesmas dos cards (lib/status.ts).
+ * Séries sem bom/ruim: principal (anil), secundaria (roxo), terciaria (azul-céu), referencia (anil claro: orçado, ano anterior).
+ * neutro: só linhas de referência (média).
+ */
+export const COR = {
+  principal: '#4f46e5', secundaria: '#9333ea', terciaria: '#0284c7', referencia: '#c7d2fe',
+  neutro: '#64748b', neutroMedio: '#94a3b8', neutroClaro: '#cbd5e1',
+  bom: '#16a34a', melhorar: '#eab308', atencao: '#ea580c', ruim: '#dc2626',
+};
+/** Cor do gráfico para um status; sem status, a cor da série (padrão: principal). */
+export const corStatus = (s: { nivel: 'bom' | 'melhorar' | 'atencao' | 'ruim' } | null | undefined, semStatus = COR.principal) => (s ? COR[s.nivel] : semStatus);
 
 /** Valor curto para eixos de gráfico: "R$ 200 mil", "R$ 2,3 mi" (não encavala no celular). */
 export const brlCurto = (n: number) =>
@@ -47,3 +60,13 @@ const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'o
 /** Rótulo do período do financeiro: "out/26" (mês) ou "19/10" (semana que começa nesse dia). */
 export const rotuloPeriodo = (p: string) =>
   p.length === 7 ? `${MESES[Number(p.slice(5, 7)) - 1]}/${p.slice(2, 4)}` : `${p.slice(8, 10)}/${p.slice(5, 7)}`;
+
+/** Palavras certas para o período: "do mês" / "da semana", "último mês" / "última semana", "3 meses" / "3 semanas". */
+export function falaPeriodo(nome: string) {
+  const fem = nome === 'semana';
+  return {
+    do: fem ? 'da' : 'do', ao: fem ? 'à' : 'ao', ultimo: fem ? 'última' : 'último', igual: fem ? 'igual à' : 'igual ao',
+    comparado: fem ? 'comparada' : 'comparado', dos: fem ? 'das' : 'dos',
+    plural: (n: number) => (n === 1 ? nome : nome === 'mês' ? 'meses' : `${nome}s`),
+  };
+}
